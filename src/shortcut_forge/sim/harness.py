@@ -244,6 +244,15 @@ def _widest_gap(runs: list[list[int]]) -> tuple[int, int] | None:
 # docs/simulator-harness.md, moved here rather than rewritten.
 
 
+def _has_window(sim: Simulator) -> bool:
+    """Whether the host has a window for this device yet; a missing one raises, so it is caught here."""
+    try:
+        sim.window_rect()
+    except SimulatorError:
+        return False
+    return True
+
+
 class _Host:
     """What this harness needs from whichever app is showing the device."""
 
@@ -289,11 +298,9 @@ class _SimulatorApp(_Host):
         # windowless for a few seconds after a boot.
         deadline = time.time() + 60
         while time.time() < deadline:
-            try:
-                sim._window_rect()  # noqa: SLF001 -- _Host and Simulator are one tightly-coupled unit
+            if _has_window(sim):
                 return
-            except SimulatorError:  # noqa: PERF203 -- polling for the window to appear is the point
-                time.sleep(2)
+            time.sleep(2)
         raise SimulatorError("Simulator never opened a window for this device")
 
     def configure(self, sim: Simulator) -> None:
@@ -302,20 +309,20 @@ class _SimulatorApp(_Host):
         Applied tolerantly: another device kind may not offer these, and a
         missing item is worth a note rather than a crash.
         """
-        if not sim._menu_click(f'menu item "Point Accurate" of {self.WINDOW_MENU}'):  # noqa: SLF001
+        if not sim.menu_click(f'menu item "Point Accurate" of {self.WINDOW_MENU}'):
             warnings.warn(
                 "note: no Point Accurate for this window; taps fall back to the window's own scale", stacklevel=2
             )
         time.sleep(0.8)
         bezels = f'menu item "Show Device Bezels" of {self.WINDOW_MENU}'
-        exists, marked = sim._menu_item(bezels)  # noqa: SLF001
+        exists, marked = sim.menu_item(bezels)
         if exists and marked:
-            sim._menu_click(bezels)  # noqa: SLF001
+            sim.menu_click(bezels)
             time.sleep(1.0)
 
     def mapping(self, sim: Simulator, device_size: tuple[int, int]) -> tuple[float, float, float]:
         dw, dh = device_size
-        wx, wy, ww, wh = sim._window_rect()  # noqa: SLF001
+        wx, wy, ww, wh = sim.window_rect()
         ppp = ww / dw
         return wx, wy + (wh - dh * ppp), ppp
 
@@ -404,7 +411,7 @@ class _DeviceHub(_Host):
         self.mapping(sim, sim.image().size)
 
     def mapping(self, sim: Simulator, device_size: tuple[int, int]) -> tuple[float, float, float]:
-        key = (sim._window_rect(), tuple(device_size))  # noqa: SLF001
+        key = (sim.window_rect(), tuple(device_size))
         if key not in self._measured:
             self._measured[key] = self._measure(sim, key[0], device_size)
         return self._measured[key]
@@ -583,7 +590,7 @@ class Simulator:
 
     # -- window geometry ------------------------------------------------
     @staticmethod
-    def _menu_item(item: str | None) -> tuple[bool, str | None]:
+    def menu_item(item: str | None) -> tuple[bool, str | None]:
         """(exists, mark_char) for a menu item; (False, None) when it is absent.
 
         Menu contents depend on the frontmost window, and a menu item that is
@@ -601,7 +608,7 @@ class Simulator:
         return True, (None if v in ("", "missing value") else v)
 
     @staticmethod
-    def _menu_click(item: str | None) -> bool:
+    def menu_click(item: str | None) -> bool:
         """Click a menu item. False when this window's menu has no such item."""
         try:
             _osa(f'tell application "System Events" to tell process "{host().proc}" to click {item}')
@@ -620,7 +627,7 @@ class Simulator:
         name, _version = self.device_label()
         deadline = time.time() + timeout
         while time.time() < deadline:
-            self._window_rect()  # matches by title, and AXRaises it
+            self.window_rect()  # matches by title, and AXRaises it
             try:
                 front = _osa(
                     f'tell application "System Events" to tell process "{host().proc}" to return name of window 1'
@@ -660,7 +667,7 @@ class Simulator:
                     return d["name"], version
         raise SimulatorError(f"device {self.udid} not found")
 
-    def _window_rect(self) -> tuple[int, int, int, int]:
+    def window_rect(self) -> tuple[int, int, int, int]:
         """Locate *this* device's Simulator window.
 
         More than one simulator can be booted at once, and "window 1" is then
@@ -772,7 +779,7 @@ class Simulator:
         cycle the setting rather than trusting the tick.
         """
         item = host().keyboard_item
-        exists, marked = self._menu_item(item)
+        exists, marked = self.menu_item(item)
         if not exists:
             # Unlike the display settings this one is not optional: without it
             # synthesized keystrokes reach nothing. Say which window owns the
@@ -784,7 +791,7 @@ class Simulator:
             )
         clicks = 2 if marked else 1
         for _ in range(clicks):
-            self._menu_click(item)
+            self.menu_click(item)
             time.sleep(0.7)
 
     # -- finding the affirmative button ---------------------------------
@@ -877,14 +884,10 @@ class Simulator:
             / "data/Library/Shortcuts/Shortcuts.sqlite"
         )
 
-    @property
-    def _db(self) -> Path:
-        return self.db_path
-
     def _query(self, sql: str, params: tuple[Any, ...] = ()) -> list[tuple[Any, ...]]:
-        if not self._db.exists():
+        if not self.db_path.exists():
             return []
-        con = sqlite3.connect(f"file:{self._db}?mode=ro", uri=True)
+        con = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
         try:
             return con.execute(sql, params).fetchall()
         finally:
@@ -921,7 +924,7 @@ class Simulator:
         archive_name = _keyed_lookup(_plist(blob), "archiveName")
         if not archive_name:
             return None
-        path = self._db.parent / "PersistentStorage" / str(archive_name)
+        path = self.db_path.parent / "PersistentStorage" / str(archive_name)
         if not path.exists():
             return None
         # Shortcuts wraps the payload differently depending on how it was
