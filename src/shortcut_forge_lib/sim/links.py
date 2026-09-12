@@ -16,12 +16,12 @@ import subprocess
 import time
 from typing import TYPE_CHECKING
 
-from shortcut_forge.plist import read_xml
+from shortcut_forge_lib.plist import read_xml
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from shortcut_forge.sim.harness import Simulator
+    from shortcut_forge_lib.sim.harness import Simulator
 
 
 class LinkError(RuntimeError):

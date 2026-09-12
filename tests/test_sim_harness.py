@@ -12,8 +12,8 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from shortcut_forge.sim import harness
-from shortcut_forge.sim.harness import (
+from shortcut_forge_lib.sim import harness
+from shortcut_forge_lib.sim.harness import (
     KEYCODES,
     Simulator,
     _contiguous,

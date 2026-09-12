@@ -41,10 +41,10 @@ taps are synthesized as real mouse events.
 ```python
 from pathlib import Path
 
-from shortcut_forge.actions import GREATER_THAN, ActionList
-from shortcut_forge.build import Shortcut, build_all
-from shortcut_forge.plist import document, out, ts, var
-from shortcut_forge.uuids import random_uuids
+from shortcut_forge_lib.actions import GREATER_THAN, ActionList
+from shortcut_forge_lib.build import Shortcut, build_all
+from shortcut_forge_lib.plist import document, out, ts, var
+from shortcut_forge_lib.uuids import random_uuids
 
 a = ActionList(random_uuids())
 a.comment("Says hello, or complains if Shortcut Input was empty.")
@@ -70,14 +70,14 @@ before anything is signed.
 
 | Module | What it gives you |
 |---|---|
-| `shortcut_forge.plist` | The plist primitives: `ts()`, `out()`, `var()`, `attach()`, `dict_field()`, `kv()`, `act()`, `comment()`, `document()`, `import_question()`, `write_xml()`. |
-| `shortcut_forge.uuids` | `random_uuids()` for builds that are not committed; `RoleUuids` for builds that are, so the diff is readable. |
-| `shortcut_forge.actions` | `ActionList`: a list of actions with the proven idioms as methods, including `count_matches()` and balanced control-flow markers. |
-| `shortcut_forge.checks` | Offsets, UTF-16 safety, dangling references, dictionary keys, control-flow pairing, Run Shortcut targets. |
-| `shortcut_forge.toolchain` | `validate()` and `sign()` over the plugin's tools. |
-| `shortcut_forge.build` | `Shortcut` and `build_all()`. |
-| `shortcut_forge.publisher` | A shortcut that mints iCloud share links for other shortcuts by name. |
-| `shortcut_forge.sim` | `Simulator` (install, run, tap, type, read state), a throwaway CA, the setup-question canary, and the iCloud link checker. |
+| `shortcut_forge_lib.plist` | The plist primitives: `ts()`, `out()`, `var()`, `attach()`, `dict_field()`, `kv()`, `act()`, `comment()`, `document()`, `import_question()`, `write_xml()`. |
+| `shortcut_forge_lib.uuids` | `random_uuids()` for builds that are not committed; `RoleUuids` for builds that are, so the diff is readable. |
+| `shortcut_forge_lib.actions` | `ActionList`: a list of actions with the proven idioms as methods, including `count_matches()` and balanced control-flow markers. |
+| `shortcut_forge_lib.checks` | Offsets, UTF-16 safety, dangling references, dictionary keys, control-flow pairing, Run Shortcut targets. |
+| `shortcut_forge_lib.toolchain` | `validate()` and `sign()` over the plugin's tools. |
+| `shortcut_forge_lib.build` | `Shortcut` and `build_all()`. |
+| `shortcut_forge_lib.publisher` | A shortcut that mints iCloud share links for other shortcuts by name. |
+| `shortcut_forge_lib.sim` | `Simulator` (install, run, tap, type, read state), a throwaway CA, the setup-question canary, and the iCloud link checker. |
 | `shortcut-forge` (CLI) | `validate` and `sign` subcommands, for a shell script with nothing else to call. |
 
 ## Testing

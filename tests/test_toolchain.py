@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from shortcut_forge import toolchain
-from shortcut_forge.toolchain import SigningError, ToolNotFoundError, sign, validate
+from shortcut_forge_lib import toolchain
+from shortcut_forge_lib.toolchain import SigningError, ToolNotFoundError, sign, validate
 
 
 def fake_tool(directory: Path, name: str, script: str) -> Path:

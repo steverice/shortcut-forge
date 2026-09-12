@@ -7,10 +7,10 @@ import stat
 
 import pytest
 
-from shortcut_forge.build import Shortcut, build_all
-from shortcut_forge.checks import CheckError
-from shortcut_forge.plist import act, comment, document, read_xml, ts, var
-from shortcut_forge.toolchain import ValidationError
+from shortcut_forge_lib.build import Shortcut, build_all
+from shortcut_forge_lib.checks import CheckError
+from shortcut_forge_lib.plist import act, comment, document, read_xml, ts, var
+from shortcut_forge_lib.toolchain import ValidationError
 
 
 def wrapper_for(name):

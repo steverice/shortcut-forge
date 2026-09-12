@@ -10,14 +10,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from shortcut_forge import checks, toolchain
-from shortcut_forge.plist import write_xml
+from shortcut_forge_lib import checks, toolchain
+from shortcut_forge_lib.plist import write_xml
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Sequence
     from pathlib import Path
 
-    from shortcut_forge.types import OnStep
+    from shortcut_forge_lib.types import OnStep
 
 
 @dataclass

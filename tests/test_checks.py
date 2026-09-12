@@ -7,8 +7,8 @@ import itertools
 
 import pytest
 
-from shortcut_forge.actions import ActionList
-from shortcut_forge.checks import (
+from shortcut_forge_lib.actions import ActionList
+from shortcut_forge_lib.checks import (
     CheckError,
     check_all,
     check_control_flow,
@@ -18,7 +18,7 @@ from shortcut_forge.checks import (
     check_runs_shortcut,
     check_utf16_safe,
 )
-from shortcut_forge.plist import OBJ, act, dict_field, dict_key, document, kv, out, text_value, ts, var
+from shortcut_forge_lib.plist import OBJ, act, dict_field, dict_key, document, kv, out, text_value, ts, var
 
 
 def actions(doc):

@@ -6,10 +6,10 @@ import line; everything else is reached through its module.
 
 from __future__ import annotations
 
-from shortcut_forge.actions import GREATER_THAN, LESS_THAN, ActionList
-from shortcut_forge.build import Shortcut, build_all
-from shortcut_forge.checks import CheckError, check_all
-from shortcut_forge.plist import (
+from shortcut_forge_lib.actions import GREATER_THAN, LESS_THAN, ActionList
+from shortcut_forge_lib.build import Shortcut, build_all
+from shortcut_forge_lib.checks import CheckError, check_all
+from shortcut_forge_lib.plist import (
     EXTENSION_INPUT,
     OBJ,
     act,
@@ -31,7 +31,7 @@ from shortcut_forge.plist import (
     var,
     write_xml,
 )
-from shortcut_forge.uuids import RoleUuids, random_uuids
+from shortcut_forge_lib.uuids import RoleUuids, random_uuids
 
 __all__ = [
     "EXTENSION_INPUT",

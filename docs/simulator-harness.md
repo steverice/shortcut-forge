@@ -1,6 +1,6 @@
 # The simulator harness
 
-`shortcut_forge.sim` installs real shortcuts into the real Shortcuts app on an
+`shortcut_forge_lib.sim` installs real shortcuts into the real Shortcuts app on an
 iOS simulator, runs them, taps through their prompts, and reads their state
 back off the device. Until it existed the only way to test a shortcut was to
 AirDrop a build to a phone and see what happened. These notes were written in
@@ -156,7 +156,7 @@ once if no traffic has appeared and no prompt is on screen.
 Setup questions regressed during the iOS 27 beta cycle: answering them and
 tapping "Add Shortcut" does nothing at all, while Skip Setup commits the
 answers. brightwheel-checkin's `TESTING.md` carries the version-by-version
-support matrix and the probes behind it. `shortcut_forge.sim.probes.setup_probe`
+support matrix and the probes behind it. `shortcut_forge_lib.sim.probes.setup_probe`
 is the two-action canary that measures it on any runtime, and
 `links.check_link` counts the questions an installed copy actually holds.
 

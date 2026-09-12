@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from shortcut_forge.plist import act, attach, document, import_question, out
-from shortcut_forge.uuids import random_uuids
+from shortcut_forge_lib.plist import act, attach, document, import_question, out
+from shortcut_forge_lib.uuids import random_uuids
 
 SETUP_PROBE_PLACEHOLDER = "not set"
 """What the probe's Text action holds until an import question overwrites it."""

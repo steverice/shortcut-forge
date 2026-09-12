@@ -6,7 +6,7 @@ Instructions for AI coding agents working on this codebase.
 
 ```
 src/
-  shortcut_forge/        # the library; no argparse, argcomplete, or Rich anywhere in it
+  shortcut_forge_lib/        # the library; no argparse, argcomplete, or Rich anywhere in it
     plist.py             # the plist shapes, verbatim: ts(), out(), var(), act(), document(), ...
     uuids.py             # random_uuids(), RoleUuids
     actions.py           # ActionList: the idioms (count_matches, control-flow markers)
@@ -57,9 +57,9 @@ credentials baked in must stay inside the directory it was written to.
 
 ## Architecture rules
 
-- `shortcut_forge` never imports Rich, argparse, or argcomplete. The CLI is the
+- `shortcut_forge_lib` never imports Rich, argparse, or argcomplete. The CLI is the
   only place that formats output.
-- `shortcut_forge.sim.harness` must import without Xcode present. Host
+- `shortcut_forge_lib.sim.harness` must import without Xcode present. Host
   detection is lazy (`host()`), and unit tests never call it.
 - Only `LESS_THAN` and `GREATER_THAN` are exported as `WFCondition` values.
   Other comparisons have not been proven to branch correctly on a numeric
@@ -99,6 +99,6 @@ type it. Run `make check` before every commit. Never bump the version locally.
 | Tool | Purpose | Required |
 |---|---|---|
 | `validate-shortcut`, `sign-shortcut` | from the shortcuts-playground plugin; validating and signing | for `build_all()` and the CLI |
-| `xcrun simctl`, Device Hub or Simulator.app | driving a simulator | for `shortcut_forge.sim` |
+| `xcrun simctl`, Device Hub or Simulator.app | driving a simulator | for `shortcut_forge_lib.sim` |
 | `openssl` | the throwaway CA | for `sim.certs` |
-| `osascript`, `screencapture` | window geometry and taps | for `shortcut_forge.sim` |
+| `osascript`, `screencapture` | window geometry and taps | for `shortcut_forge_lib.sim` |

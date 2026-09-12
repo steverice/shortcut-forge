@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from shortcut_forge.plist import act, attach, comment, cond_input, out, ts
+from shortcut_forge_lib.plist import act, attach, comment, cond_input, out, ts
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence

@@ -55,7 +55,7 @@ requires = ["uv_build>=0.11.8,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = ["shortcut_forge", "shortcut_forge_cli"]
+module-name = ["shortcut_forge_lib", "shortcut_forge_cli"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -110,7 +110,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["shortcut_forge", "shortcut_forge_cli"]
+known-first-party = ["shortcut_forge_lib", "shortcut_forge_cli"]
 
 [tool.ty.environment]
 python-version = "3.10"

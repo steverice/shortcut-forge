@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import plistlib
 
-from shortcut_forge.plist import (
+from shortcut_forge_lib.plist import (
     EXTENSION_INPUT,
     OBJ,
     act,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 
-from shortcut_forge.uuids import RoleUuids, random_uuids
+from shortcut_forge_lib.uuids import RoleUuids, random_uuids
 
 NAMESPACE = "6E679556-DF2D-4820-B246-FD8F48BA3355"
 

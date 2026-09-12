@@ -12,7 +12,7 @@ import re
 
 import pytest
 
-from shortcut_forge.publisher import ICLOUD_LINK_ACTION, share_links_shortcut
+from shortcut_forge_lib.publisher import ICLOUD_LINK_ACTION, share_links_shortcut
 
 TARGETS = ["Brightwheel Attendance", "Brightwheel Check In", "Brightwheel Check Out"]
 REPEAT = "is.workflow.actions.repeat.each"

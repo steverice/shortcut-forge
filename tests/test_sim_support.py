@@ -8,10 +8,10 @@ import subprocess
 
 import pytest
 
-from shortcut_forge.checks import check_all
-from shortcut_forge.plist import write_xml
-from shortcut_forge.sim import certs, links, probes
-from shortcut_forge.sim.links import LinkError, check_link, install_from_link
+from shortcut_forge_lib.checks import check_all
+from shortcut_forge_lib.plist import write_xml
+from shortcut_forge_lib.sim import certs, links, probes
+from shortcut_forge_lib.sim.links import LinkError, check_link, install_from_link
 
 # -- probes ---------------------------------------------------------------------
 

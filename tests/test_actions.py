@@ -6,9 +6,9 @@ import itertools
 
 import pytest
 
-from shortcut_forge.actions import CLOSE, ELSE, GREATER_THAN, LESS_THAN, OPEN, ActionList
-from shortcut_forge.checks import check_control_flow
-from shortcut_forge.plist import attach, cond_input, out, ts, var
+from shortcut_forge_lib.actions import CLOSE, ELSE, GREATER_THAN, LESS_THAN, OPEN, ActionList
+from shortcut_forge_lib.checks import check_control_flow
+from shortcut_forge_lib.plist import attach, cond_input, out, ts, var
 
 
 def counter():

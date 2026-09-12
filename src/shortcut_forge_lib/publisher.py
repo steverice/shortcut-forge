@@ -25,9 +25,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from shortcut_forge.actions import GREATER_THAN, ActionList
-from shortcut_forge.plist import attach, document, out, ts, var
-from shortcut_forge.uuids import random_uuids
+from shortcut_forge_lib.actions import GREATER_THAN, ActionList
+from shortcut_forge_lib.plist import attach, document, out, ts, var
+from shortcut_forge_lib.uuids import random_uuids
 
 ICLOUD_LINK_ACTION = "com.apple.shortcuts.CreateShortcutiCloudLinkAction"
 """Verified against the v78 ToolKit database: "Create iCloud Link for Shortcut", one parameter keyed `shortcut`."""

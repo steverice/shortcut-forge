@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from shortcut_forge.actions import CLOSE, CONDITIONAL, ELSE, MENU, OPEN
-from shortcut_forge.plist import OBJ
+from shortcut_forge_lib.actions import CLOSE, CONDITIONAL, ELSE, MENU, OPEN
+from shortcut_forge_lib.plist import OBJ
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterator

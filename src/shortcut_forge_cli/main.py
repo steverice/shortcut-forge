@@ -2,7 +2,7 @@
 
 The library does the work; this is the thin end of it, for a build script that
 has nothing else to call. A generator written in Python should call
-`shortcut_forge.build.build_all()` directly instead.
+`shortcut_forge_lib.build.build_all()` directly instead.
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ from pathlib import Path
 
 import argcomplete
 
-from shortcut_forge import toolchain
 from shortcut_forge_cli.progress import error, info, success
+from shortcut_forge_lib import toolchain
 
 
 class Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):

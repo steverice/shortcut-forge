@@ -22,7 +22,7 @@ platform behavior from a single run with a confound.
 ## Directory structure
 
 ```
-src/shortcut_forge/
+src/shortcut_forge_lib/
   plist.py        The plist shapes. ts() derives attachment offsets; document() builds the root.
   uuids.py        random_uuids() for uncommitted builds; RoleUuids for committed, diffable ones.
   actions.py      ActionList: a list of actions with the idioms as methods.
@@ -87,7 +87,7 @@ edit a two-commit dance for no one's benefit yet.
 **A build**, from a generator:
 
 ```
-generator                      shortcut_forge
+generator                      shortcut_forge_lib
   documents  ───────────────>  build_all(dist, [Shortcut(name, doc, xml_stem)], waived=[...])
                                  checks.check_all(doc)          structural, raises CheckError
                                  write_xml(doc, dist/name.xml)
@@ -99,7 +99,7 @@ generator                      shortcut_forge
 **A simulator test**, from a project's own runner:
 
 ```
-project test                   shortcut_forge.sim
+project test                   shortcut_forge_lib.sim
   ensure_certs(tls_dir)   ──>  ca.pem, server.pem              openssl
   Simulator.find()        ──>  a booted iOS 27 device          xcrun simctl
   sim.add_root_cert(ca)        trust the mock's CA

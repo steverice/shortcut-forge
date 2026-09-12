@@ -6,7 +6,7 @@ examples below, and moved here when the code that embodies them did. The
 toolchain is the shortcuts-playground plugin, which supplies
 `validate-shortcut`, `sign-shortcut`, `resolve-icon`, a bundled ToolKit
 snapshot, and a library of real shortcuts under `golden-shortcuts/`;
-`shortcut_forge.toolchain` wraps the first two.
+`shortcut_forge_lib.toolchain` wraps the first two.
 
 A claim in here is a measurement. When one turns out to be wrong, withdraw
 it rather than patch a new theory over it, and say what was measured.
