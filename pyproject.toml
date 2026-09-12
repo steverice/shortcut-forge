@@ -1,0 +1,124 @@
+[project]
+name = "shortcut-forge"
+version = "0.1.0"
+description = "Generate, check, sign, and simulator-test iOS Shortcuts from Python"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Steve Rice", email = "steve@steverice.org" }
+]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    "argcomplete>=3.0",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+# Driving the iOS Simulator: screenshots are read as arrays, taps are posted
+# through Quartz. Nothing in the core needs any of it.
+sim = [
+    "numpy>=1.26",
+    "Pillow>=10.0",
+    "pyobjc-framework-Quartz>=10.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.11",
+    "ty>=0.0.1a7",
+    "pytest>=8.0",
+    "pytest-mock>=3.0",
+    "commitizen>=4.0",
+    "cz-conventional-gitmoji>=0.7",
+    "pre-commit>=4.0",
+    "numpy>=1.26",
+    "Pillow>=10.0",
+    "pyobjc-framework-Quartz>=10.0",
+]
+
+[project.scripts]
+shortcut-forge = "shortcut_forge_cli.main:main"
+
+[build-system]
+requires = ["uv_build>=0.11.8,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = ["shortcut_forge", "shortcut_forge_cli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "integration: tests that run real external tools (openssl, a simulator)",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F",          # pycodestyle + pyflakes
+    "I", "TID", "TCH",      # imports: isort, tidy-imports, type-checking
+    "UP", "FA", "YTT",      # modernization: pyupgrade, future-annotations, 2020
+    "ANN",                   # type annotations
+    "B", "SIM", "C4",       # bugs: bugbear, simplify, comprehensions
+    "RSE", "PIE", "PERF",   # bugs: raise, pie, performance
+    "RET",                   # return style
+    "S",                     # security: bandit
+    "BLE",                   # blind except
+    "RUF", "PT",             # ruff-specific, pytest style
+    "ERA",                   # eradicate (no commented-out code)
+    "FLY", "ISC",            # f-strings, implicit string concat
+    "T10", "T20",            # no debugger, no print
+    "PTH",                   # pathlib over os.path
+    "A", "SLF", "N",        # no builtin shadowing, no private access, PEP 8 naming
+    "ASYNC",                 # async anti-patterns
+    "PGH",                   # no blanket noqa/type:ignore
+    "INP",                   # no implicit namespace packages
+]
+
+ignore = [
+    "ANN204",   # __init__ return type is always None — obvious, no value
+    "ANN401",   # Any is sometimes the right type (dict values, kwargs, JSON)
+    # Project-specific:
+    "S603",     # every subprocess call here passes a fixed argv (xcrun, osascript, openssl, the signer)
+    "S607",     # those tools are found on PATH by name on purpose; there is no fixed install location
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",                   # assert is how pytest tests assert
+    "S105", "S106", "S108",  # fake secrets/paths in test fixtures
+    "ANN",                    # test functions don't need type annotations
+    "SLF001",                 # tests legitimately access private members
+    "INP001",                 # test directories use pytest discovery, not __init__.py
+    "TC",                     # tests use runtime imports freely
+    "PTH",                    # tests can use open() directly
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["shortcut_forge", "shortcut_forge_cli"]
+
+[tool.ty.environment]
+python-version = "3.10"
+root = ["src"]
+
+[tool.commitizen]
+name = "cz_gitmoji"
+version_provider = "pep621"
+tag_format = "v$version"
+update_changelog_on_bump = true
