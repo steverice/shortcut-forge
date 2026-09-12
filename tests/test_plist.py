@@ -17,6 +17,7 @@ from shortcut_forge.plist import (
     import_question,
     kv,
     kv_dict,
+    kv_text,
     out,
     prop,
     read_xml,
@@ -86,6 +87,7 @@ def test_dictionary_rows():
         "WFKey": ts("Accept"),
         "WFValue": ts("application/json"),
     }
+    assert kv_text("k", "v") == {"WFItemType": 0, "WFKey": text_value("k"), "WFValue": text_value("v")}
     nested = kv_dict("user", [kv("email", ts("e"))])
     assert nested["WFItemType"] == 1
     assert nested["WFValue"] == {
@@ -136,6 +138,10 @@ def test_document_omits_input_classes_unless_given():
     assert document("N", [], glyph=1, color=2, input_classes=["WFStringContentItem"])[
         "WFWorkflowInputContentItemClasses"
     ] == ["WFStringContentItem"]
+
+
+def test_document_without_a_name_matches_a_device_export():
+    assert "WFWorkflowName" not in document(None, [], glyph=1, color=2)
 
 
 def test_document_optional_export_keys():

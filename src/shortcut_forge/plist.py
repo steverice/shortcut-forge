@@ -128,6 +128,16 @@ def kv(key: str, value: dict[str, Any]) -> dict[str, Any]:
     return {"WFItemType": 0, "WFKey": ts(key), "WFValue": value}
 
 
+def kv_text(key: str, value: str) -> dict[str, Any]:
+    """One string-to-string row of a Dictionary action, as a device export writes it.
+
+    Both sides are `text_value()`: no attachment map. `kv()` writes the key
+    through `ts()`, which Shortcuts also accepts; this one round-trips an
+    export byte for byte.
+    """
+    return {"WFItemType": 0, "WFKey": text_value(key), "WFValue": text_value(value)}
+
+
 def kv_dict(key: str, items: Sequence[dict[str, Any]]) -> dict[str, Any]:
     """One row of a dictionary field whose value is itself a dictionary."""
     return {
@@ -172,7 +182,7 @@ def import_question(action_index: int, parameter_key: str, text: str, default: s
 
 
 def document(
-    name: str,
+    name: str | None,
     actions: Sequence[dict[str, Any]],
     *,
     glyph: int,
@@ -192,6 +202,11 @@ def document(
     nothing else, because there is no custom-image escape hatch. Both are
     device-measured numbers, not names; see `docs/building-shortcuts.md`.
 
+    `name` is written as `WFWorkflowName`. The library name of an imported
+    shortcut comes from its file name, not from this key, and a device export
+    does not carry it, so `None` omits it for a build that wants to match an
+    export byte for byte.
+
     `input_classes=None` omits `WFWorkflowInputContentItemClasses` entirely.
     That matters: the validator rejects the key on a shortcut that never reads
     Shortcut Input, and accepts an empty list on one that does not.
@@ -206,10 +221,11 @@ def document(
         "WFWorkflowImportQuestions": list(questions),
         "WFWorkflowMinimumClientVersion": minimum_client_version,
         "WFWorkflowMinimumClientVersionString": str(minimum_client_version),
-        "WFWorkflowName": name,
         "WFWorkflowOutputContentItemClasses": list(output_classes),
         "WFWorkflowTypes": list(workflow_types),
     }
+    if name is not None:
+        doc["WFWorkflowName"] = name
     if input_classes is not None:
         doc["WFWorkflowInputContentItemClasses"] = list(input_classes)
     if quick_action_surfaces is not None:
