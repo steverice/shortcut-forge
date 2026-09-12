@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from rich.console import Console
 
-_console = Console()
+# soft_wrap: when the output is a file or a pipe Rich would otherwise wrap every
+# line at 80 columns, which splits a build log's lines in the middle of a path.
+_console = Console(soft_wrap=True)
 
 
 def info(msg: str) -> None:
