@@ -769,6 +769,23 @@ class Simulator:
         time.sleep(0.5)
         return self.tap_affirmative()
 
+    def cancel_prompt(self) -> bool:
+        """Dismiss an Ask for Input dialog with its Cancel button. True if there was one.
+
+        Cancel is not blue, so it cannot be found the way Done is. It sits in
+        the same row, mirrored across the sheet's center line — measured on
+        iOS 27 at the same height as Done and at the width minus Done's own
+        center — so it is reached by reflecting Done's box.
+        """
+        img = self.image()
+        boxes = self.blue_buttons(img)
+        if not boxes:
+            return False
+        w, _h = img.size
+        x0, y0, x1, y1 = max(boxes, key=lambda b: (b[3], b[2]))
+        self.tap(w - (x0 + x1) // 2, (y0 + y1) // 2, device_size=img.size)
+        return True
+
     def ensure_hardware_keyboard(self) -> None:
         """Connect the hardware keyboard, re-applying it even if already checked.
 
