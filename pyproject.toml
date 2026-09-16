@@ -32,6 +32,13 @@ sim = [
     "Pillow>=10.0",
     "pyobjc-framework-Quartz>=10.0",
 ]
+# Baking and driving a throwaway macOS guest. Screenshots are read as images;
+# clicks go through vncdotool, which is run as the `vncdo` command rather than
+# imported. Nothing in the core needs either.
+guest = [
+    "Pillow>=10.0",
+    "vncdotool>=1.2",
+]
 
 [dependency-groups]
 dev = [

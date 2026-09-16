@@ -9,6 +9,20 @@ else, driven without touching the host's window server — the operator's own Ma
 is a bad place to mint iCloud links from, because the publisher links whatever
 it finds by name and cannot tell a clean build from a configured copy.
 
+All of it is now code, in `shortcut_forge_lib.guest`: `tart` argv shapes in
+`tart.py`, the blessing's constants and argv in `bless.py`, the client in
+`vnc.py`, `ssh.py`, and the whole sequence in `bake()`. One command rebuilds a
+base from nothing:
+
+```sh
+shortcut-forge bake mint-base --work-dir build/bake
+```
+
+It refuses to hand back a guest it has not watched render *and* accept a click.
+Read this document to change any of it; the modules carry the findings as
+comments, and `tests/test_guest.py` asserts the ones a later edit could quietly
+undo.
+
 ## The two flag choices that decide everything
 
 **`--vnc`, not `--vnc-experimental`.** Both render. The experimental one killed

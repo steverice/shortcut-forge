@@ -14,8 +14,15 @@ state back off the device.
 It was pulled out of two working projects,
 [brightwheel-checkin](https://github.com/steverice/brightwheel-checkin) and a
 private CarPlay shortcut, and everything in it was paid for on a device. The
-findings are written down in [`docs/building-shortcuts.md`](docs/building-shortcuts.md)
-and [`docs/simulator-harness.md`](docs/simulator-harness.md).
+findings are written down in [`docs/building-shortcuts.md`](docs/building-shortcuts.md),
+[`docs/simulator-harness.md`](docs/simulator-harness.md), and
+[`docs/macos-guest.md`](docs/macos-guest.md).
+
+It also bakes the macOS guest that publishing needs. An iCloud share link cannot
+be revoked and carries whatever library minted it, so links are minted from a
+throwaway VM holding nothing else. `shortcut-forge bake <name>` builds one from
+an IPSW without a human at the screen, and refuses to hand back a guest it has
+not watched render *and* accept a click.
 
 ## Install
 
@@ -35,6 +42,10 @@ Validating and signing need the shortcuts-playground Claude Code plugin's
 and `SHORTCUT_FORGE_SIGNER` pointing at them). The simulator harness needs
 Xcode, an iOS simulator, and Accessibility permission for the terminal, because
 taps are synthesized as real mouse events.
+
+Baking a guest is the `[guest]` extra, plus `tart` 2.37 or newer and macOS 27 or
+newer on this Mac — `--provisioning-opts` needs 27 on both host and guest, and
+without it a first boot stops at Setup Assistant with nobody to answer it.
 
 ## Quick start
 
@@ -78,7 +89,8 @@ before anything is signed.
 | `shortcut_forge_lib.build` | `Shortcut` and `build_all()`. |
 | `shortcut_forge_lib.publisher` | A shortcut that mints iCloud share links for other shortcuts by name. |
 | `shortcut_forge_lib.sim` | `Simulator` (install, run, tap, type, read state), a throwaway CA, the setup-question canary, and the iCloud link checker. |
-| `shortcut-forge` (CLI) | `validate` and `sign` subcommands, for a shell script with nothing else to call. |
+| `shortcut_forge_lib.guest` | Baking a throwaway macOS guest and proving a VNC client can see and drive it: `tart` argv, the offline TCC blessing, SSH, and `bake()`. |
+| `shortcut-forge` (CLI) | `validate`, `sign`, and `bake` subcommands, for a shell script with nothing else to call. |
 
 ## Testing
 

@@ -20,10 +20,17 @@ src/
       certs.py           # ensure_certs(): throwaway CA the simulator trusts
       probes.py          # setup_probe(): the import-question canary
       links.py           # install_from_link(), check_link()
-  shortcut_forge_cli/    # `shortcut-forge validate` and `sign`
+    guest/
+      tart.py            # argv for the tart CLI, and where it keeps a guest's disk
+      bless.py           # the TCC rows and the argv that write a guest's screen grants
+      vnc.py             # vncdotool argv: ARD auth, capture, click
+      ssh.py             # one round trip to a guest, password through an askpass helper
+      bake.py            # bake(): create, provision, bless offline, prove it can be driven
+  shortcut_forge_cli/    # `shortcut-forge validate`, `sign`, and `bake`
 docs/
   building-shortcuts.md  # what Shortcuts actually does, measured on devices
   simulator-harness.md   # what driving a simulator took, and what it cannot tell you
+  macos-guest.md         # what driving a macOS VM took, and the silent failures in it
 tests/
   fixtures/              # real builds from the two consumer projects
 ```
@@ -61,6 +68,12 @@ credentials baked in must stay inside the directory it was written to.
   only place that formats output.
 - `shortcut_forge_lib.sim.harness` must import without Xcode present. Host
   detection is lazy (`host()`), and unit tests never call it.
+- **A guest is never certified by a screenshot.** Screen capture and pointer
+  input are separate TCC grants, a denied capture is a well-formed frame rather
+  than an error, and a guest at 2x HiDPI renders perfectly while dropping every
+  click. Anything that reports a guest usable must click something and confirm
+  the effect over SSH, after a restart. `guest/bake.py`'s `prove()` is the one
+  place that judgment lives; do not add a second, weaker one.
 - Only `LESS_THAN` and `GREATER_THAN` are exported as `WFCondition` values.
   Other comparisons have not been proven to branch correctly on a numeric
   input; do not add one without a measurement.
@@ -102,3 +115,4 @@ type it. Run `make check` before every commit. Never bump the version locally.
 | `xcrun simctl`, Device Hub or Simulator.app | driving a simulator | for `shortcut_forge_lib.sim` |
 | `openssl` | the throwaway CA | for `sim.certs` |
 | `osascript`, `screencapture` | window geometry and taps | for `shortcut_forge_lib.sim` |
+| `tart` 2.37+, `vncdo`, `hdiutil`, `PlistBuddy` | baking and driving a macOS guest | for `shortcut_forge_lib.guest` |

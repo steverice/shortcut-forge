@@ -8,13 +8,15 @@ has nothing else to call. A generator written in Python should call
 from __future__ import annotations
 
 import argparse
+import json
 from importlib.metadata import version
 from pathlib import Path
 
 import argcomplete
 
-from shortcut_forge_cli.progress import error, info, success
+from shortcut_forge_cli.progress import error, info, success, warning
 from shortcut_forge_lib import toolchain
+from shortcut_forge_lib.guest import tart
 
 
 class Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
@@ -27,7 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "examples:\n"
             "  %(prog)s validate dist/*.xml --waive 'Shortcuts Playground prompt text'\n"
-            "  %(prog)s sign 'dist/Car Greetings.xml' --mode anyone"
+            "  %(prog)s sign 'dist/Car Greetings.xml' --mode anyone\n"
+            "  %(prog)s bake mint-base --work-dir ~/.cache/shortcut-forge/bake"
         ),
         formatter_class=Formatter,
         allow_abbrev=False,
@@ -36,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
     add_validate_command(subparsers)
     add_sign_command(subparsers)
+    add_bake_command(subparsers)
     argcomplete.autocomplete(parser)
     return parser
 
@@ -68,6 +72,31 @@ def add_sign_command(subparsers: argparse._SubParsersAction) -> None:
     sub.set_defaults(func=handle_sign)
 
 
+def add_bake_command(subparsers: argparse._SubParsersAction) -> None:
+    sub = subparsers.add_parser(
+        "bake",
+        help="build a throwaway macOS guest that a VNC client can see and drive",
+        description=(
+            "Create a macOS guest with tart, provision an account, grant its screen and its pointer to "
+            "Screen Sharing, and prove both before handing it back. Takes something like half an hour, "
+            "most of it the restore. Needs the [guest] extra, tart 2.37 or newer, and macOS 27 or newer "
+            "on this Mac. The guest is left stopped, ready for `tart clone`."
+        ),
+        formatter_class=Formatter,
+    )
+    sub.add_argument("name", help="the guest to create")
+    sub.add_argument(
+        "--work-dir",
+        type=Path,
+        default=Path("build/bake"),
+        help="where the credentials, tart's log, and the proof screenshot go",
+    )
+    sub.add_argument("--username", default=tart.DEFAULT_USERNAME, help="the account to provision")
+    sub.add_argument("--full-name", default=tart.DEFAULT_FULL_NAME, help="that account's full name")
+    sub.add_argument("--tart", dest="tart_bin", default="tart", help="the tart binary")
+    sub.set_defaults(func=handle_bake)
+
+
 def handle_validate(args: argparse.Namespace) -> int:
     failed = False
     for xml in args.xml:
@@ -89,6 +118,40 @@ def handle_sign(args: argparse.Namespace) -> int:
     for xml in args.xml:
         signed = toolchain.sign(xml, name=args.name or xml.stem, mode=args.mode, output_dir=args.output_dir)
         success(f"{xml.name}: signed -> {signed}")
+    return 0
+
+
+def handle_bake(args: argparse.Namespace) -> int:
+    try:
+        from shortcut_forge_lib.guest import bake as guest_bake
+    except ImportError as e:
+        error(f"baking needs the [guest] extra (Pillow, vncdotool): {e}")
+        return 1
+
+    def save(baked: guest_bake.Baked) -> None:
+        """The moment they work, before anything that can fail."""
+        record = args.work_dir / f"{baked.name}.json"
+        record.write_text(
+            json.dumps({"name": baked.name, "user": baked.username, "password": baked.password}, indent=2),
+            encoding="utf-8",
+        )
+        record.chmod(0o600)
+        warning(f"credentials for {baked.name} saved to {record} — it is a throwaway guest, but treat it as a secret")
+
+    try:
+        baked = guest_bake.bake(
+            args.name,
+            work_dir=args.work_dir,
+            username=args.username,
+            full_name=args.full_name,
+            tart_bin=args.tart_bin,
+            on_step=info,
+            on_credentials=save,
+        )
+    except guest_bake.BakeError as e:
+        error(str(e))
+        return 1
+    success(f"{baked.name}: renders and accepts clicks; stopped and ready to clone")
     return 0
 
 
