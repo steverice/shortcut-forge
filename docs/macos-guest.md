@@ -233,6 +233,17 @@ flags=0, indirect_object_identifier='UNUSED'`, the rest NULL.
 that dumps as perfectly correct and is ignored at authorization time — the same
 silent-success shape as everything else here.
 
+**The constancy is a property of Apple-signed clients, not of the technique.**
+This blob is portable because it pins to `anchor apple` plus a bundle
+identifier, and neither changes across machines or releases. A **third-party**
+client's requirement pins to the *vendor's* signature instead, so it is not a
+constant: it must be extracted from a guest where that grant was made, and
+re-extracted whenever the vendor ships a new build. The mechanism generalizes to
+any system TCC service — `kTCCServiceSystemPolicyAllFiles` (Full Disk Access)
+included — but for anything not Apple-signed, expect a per-vendor-version blob
+rather than a literal you can paste. Raised by the `home-platform` rehearsal
+work, whose Full Disk Access grant is for a third-party disk utility.
+
 ### The other headless blocker: HiDPI drops every click
 
 A virgin guest boots at **2× HiDPI** (a 2048×1536 framebuffer backing 1024×768
