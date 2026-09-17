@@ -243,6 +243,28 @@ X'FADE0C000000003C0000000100000006000000020000001D636F6D2E6170706C652E7363726
 Row values: `client_type=0, auth_value=2, auth_reason=4, auth_version=1,
 flags=0, indirect_object_identifier='UNUSED'`, the rest NULL.
 
+**Check the primary key before trusting `INSERT OR REPLACE`.** On macOS 27.0 it
+is four columns:
+
+```sql
+PRIMARY KEY (service, client, client_type, indirect_object_identifier)
+```
+
+`indirect_object_identifier_type` is **not** among them, so the NULL written
+there is harmless and a second blessing overrides the rows rather than doubling
+them — measured against a real store, three passes, two rows. Published
+descriptions of this table give a five-column key that does include that column,
+and on such a schema the NULL would be fatal in a way nothing reports: SQLite
+treats NULLs as distinct in a unique index, so every `INSERT OR REPLACE` would
+degrade to a plain insert, and a re-blessed image would carry two rows per
+service with no way to say which one wins at authorization. A peer hit exactly
+that against the documented schema. Read the key out of the store you are
+writing to; `tests/test_guest.py` pins the one measured here.
+
+The same key is why a grant lands on top of an OS-written row rather than beside
+it — useful, since a virgin store already uses both `0` and NULL in that column
+for its own rows.
+
 **Do not compose a row by hand.** A fabricated or absent `csreq` produces a row
 that dumps as perfectly correct and is ignored at authorization time — the same
 silent-success shape as everything else here.

@@ -8,6 +8,7 @@ behind each one are in `docs/macos-guest.md`.
 from __future__ import annotations
 
 import plistlib
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -230,6 +231,73 @@ def test_preconditions_reads_nothing_of_its_own():
 
 def test_missing_tools_names_the_tart_binary_it_was_given():
     assert "/nope/tart" in bake.missing_tools("/nope/tart")
+
+
+# -- writing the grants twice ------------------------------------------------
+
+#: `access` as macOS 27.0 declares it, read verbatim out of a guest's store. The
+#: primary key is the reason this file carries a schema at all: it is four
+#: columns and does **not** include `indirect_object_identifier_type`, so the
+#: NULL `bless.tcc_rows()` writes there cannot defeat the unique index. On a
+#: schema whose key did include that column, NULLs compare distinct, every
+#: `INSERT OR REPLACE` would degrade to a plain insert, and a second blessing
+#: would double the rows instead of overriding them. The foreign key to
+#: `policies` is dropped; nothing here exercises it.
+TCC_SCHEMA = """
+CREATE TABLE access (
+    service TEXT NOT NULL,
+    client TEXT NOT NULL,
+    client_type INTEGER NOT NULL,
+    auth_value INTEGER NOT NULL,
+    auth_reason INTEGER NOT NULL,
+    auth_version INTEGER NOT NULL,
+    csreq BLOB,
+    policy_id INTEGER,
+    indirect_object_identifier_type INTEGER,
+    indirect_object_identifier TEXT NOT NULL DEFAULT 'UNUSED',
+    indirect_object_code_identity BLOB,
+    flags INTEGER,
+    last_modified INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+    pid INTEGER,
+    pid_version INTEGER,
+    boot_uuid TEXT NOT NULL DEFAULT 'UNUSED',
+    last_reminded INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+    one_time_reprompt_eligible INTEGER,
+    reminder_count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (service, client, client_type, indirect_object_identifier)
+)
+"""
+
+
+def _store(tmp_path):
+    con = sqlite3.connect(tmp_path / "TCC.db")
+    con.execute(TCC_SCHEMA)
+    return con
+
+
+def _grants(con):
+    return con.execute("SELECT count(*) FROM access WHERE client = ?", (bless.SCREEN_SHARING_AGENT,)).fetchone()[0]
+
+
+def test_blessing_twice_overrides_rather_than_doubles(tmp_path):
+    """Re-blessing an image that already carries the grants must leave two rows."""
+    con = _store(tmp_path)
+    for _ in range(3):
+        con.executemany(bless.insert_sql(), [bless.row_values(row) for row in bless.tcc_rows()])
+    assert _grants(con) == 2
+
+
+def test_an_os_written_row_is_replaced_not_joined(tmp_path):
+    """The OS writes 0 in `indirect_object_identifier_type` for some rows and
+    NULL for others. Either way the key ignores that column, so a grant lands on
+    top of an existing row rather than beside it — two rows claiming the same
+    service, with no way to say which wins at authorization time."""
+    con = _store(tmp_path)
+    existing = [dict(row, indirect_object_identifier_type=0, auth_value=0) for row in bless.tcc_rows()]
+    con.executemany(bless.insert_sql(), [bless.row_values(row) for row in existing])
+    con.executemany(bless.insert_sql(), [bless.row_values(row) for row in bless.tcc_rows()])
+    assert _grants(con) == 2
+    assert con.execute("SELECT DISTINCT auth_value FROM access").fetchall() == [(2,)], "the denial was overridden"
 
 
 def test_the_probe_point_scales_with_the_framebuffer():
