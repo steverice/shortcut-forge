@@ -89,7 +89,7 @@ kickstart -activate -configure -access -on -users probe -privs -all -restart -ag
 
 In System Settings this appears as Remote Management **on**, with the "All local
 users can access this computer to" sheet showing *every* toggle off, and Screen
-Sharing greyed out as "currently being controlled by the Remote Management
+Sharing grayed out as "currently being controlled by the Remote Management
 service." A configured agent permitted to do nothing.
 
 Setting the mask is **necessary but not sufficient**. Correct it with either:
@@ -241,7 +241,8 @@ X'FADE0C000000003C0000000100000006000000020000001D636F6D2E6170706C652E7363726
 ```
 
 Row values: `client_type=0, auth_value=2, auth_reason=4, auth_version=1,
-flags=0, indirect_object_identifier='UNUSED'`, the rest NULL.
+flags=0, indirect_object_identifier='UNUSED',
+indirect_object_identifier_type=0`, the rest NULL.
 
 **Check the primary key before trusting `INSERT OR REPLACE`.** On macOS 27.0 it
 is four columns:
@@ -250,20 +251,29 @@ is four columns:
 PRIMARY KEY (service, client, client_type, indirect_object_identifier)
 ```
 
-`indirect_object_identifier_type` is **not** among them, so the NULL written
-there is harmless and a second blessing overrides the rows rather than doubling
-them — measured against a real store, three passes, two rows. Published
-descriptions of this table give a five-column key that does include that column,
-and on such a schema the NULL would be fatal in a way nothing reports: SQLite
-treats NULLs as distinct in a unique index, so every `INSERT OR REPLACE` would
-degrade to a plain insert, and a re-blessed image would carry two rows per
-service with no way to say which one wins at authorization. A peer hit exactly
-that against the documented schema. Read the key out of the store you are
-writing to; `tests/test_guest.py` pins the one measured here.
+`indirect_object_identifier_type` is **not** among them. That is what makes a
+second blessing override the rows rather than double them — measured against a
+real store, three passes, two rows — and it is also what makes the value in that
+column a free choice. Published descriptions of this table give a five-column
+key that does include it, and on such a schema a NULL there would be fatal in a
+way nothing reports: SQLite treats NULLs as distinct in a unique index, so every
+`INSERT OR REPLACE` would degrade to a plain insert, and a re-blessed image
+would carry two rows per service with no way to say which one wins at
+authorization. A peer reproduced exactly that, against the described schema
+rather than a store. Read the key out of the store you are writing to;
+`tests/test_guest.py` pins the one measured here.
 
-The same key is why a grant lands on top of an OS-written row rather than beside
-it — useful, since a virgin store already uses both `0` and NULL in that column
-for its own rows.
+Given a free choice, **write 0** — fidelity, not correctness. macOS writes 0 for
+these two rows, and a virgin guest's store writes 0 on the granted row it ships
+with and NULL on the denied one, so 0 is what the UI flow would have left
+behind.
+
+**A blessing usually fills a gap, but it can override a denial.** A virgin guest
+carries **no** `com.apple.screensharing.agent` row at all: the store ships with
+two rows, neither of them this client. A Mac that has refused Screen Sharing
+does carry them, at `auth_value = 0`. The key is the same either way, so
+`INSERT OR REPLACE` handles both — worth knowing before reusing this on a
+machine with a history.
 
 **Do not compose a row by hand.** A fabricated or absent `csreq` produces a row
 that dumps as perfectly correct and is ignored at authorization time — the same
@@ -297,7 +307,7 @@ Fix it offline in the same pass as the TCC rows, editing the guest's own plist:
 ```
 
 This is the clearest argument in this document for the click-confirmed-over-SSH
-gate: a 2× guest passes every colour count and every byte floor, renders a
+gate: a 2× guest passes every color count and every byte floor, renders a
 flawless screenshot, and cannot be driven at all.
 
 ### Verify on a settled desktop, not a boot screen
@@ -452,7 +462,7 @@ plus restart is what proves the property; either alone does not.
 The blessing is **two** TCC rows, `kTCCServiceScreenCapture` and
 `kTCCServicePostEvent`, and every check above tests only the first. A guest
 granted screen capture but not post-event **renders perfectly and ignores every
-click**. A colour count passes it. A byte floor passes it. Then some later step
+click**. A color count passes it. A byte floor passes it. Then some later step
 fails on its own assertion, far from the cause, with a perfectly good screenshot
 attached — and whoever is debugging looks at the wrong thing.
 

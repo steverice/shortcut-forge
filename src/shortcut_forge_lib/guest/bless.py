@@ -80,7 +80,15 @@ _COLUMNS = (
 
 
 def tcc_rows(csreq: bytes = CSREQ) -> list[dict[str, object]]:
-    """The two rows to write, column-keyed. `auth_value` 2 is "allowed"."""
+    """The two rows to write, column-keyed. `auth_value` 2 is "allowed".
+
+    `indirect_object_identifier_type` is 0 for fidelity, not for correctness: it
+    sits outside the table's primary key, so either value replaces an existing
+    row (`tests/test_guest.py` pins that). But this module's whole claim is that
+    it reaches the same place the System Settings flow does, and macOS writes 0
+    for these two rows. A guest's own store writes 0 on the granted row it ships
+    with and NULL on the denied one. Proved on a guest with this value.
+    """
     return [
         {
             "service": service,
@@ -91,7 +99,7 @@ def tcc_rows(csreq: bytes = CSREQ) -> list[dict[str, object]]:
             "auth_version": 1,
             "csreq": csreq,
             "policy_id": None,
-            "indirect_object_identifier_type": None,
+            "indirect_object_identifier_type": 0,
             "indirect_object_identifier": "UNUSED",
             "indirect_object_code_identity": None,
             "flags": 0,
@@ -154,7 +162,7 @@ def data_volume(devices: Iterable[tuple[str, str]]) -> str | None:
 def rendered(distinct_colors: int) -> bool:
     """Whether a captured frame shows anything at all.
 
-    A denied capture is a well-formed image of exactly one colour, so this is
+    A denied capture is a well-formed image of exactly one color, so this is
     what distinguishes it from a working screen. It says nothing about whether
     clicks land: capture and input are separate grants, and proving input needs
     a real click confirmed out of band.

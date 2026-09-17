@@ -287,13 +287,19 @@ def test_blessing_twice_overrides_rather_than_doubles(tmp_path):
     assert _grants(con) == 2
 
 
-def test_an_os_written_row_is_replaced_not_joined(tmp_path):
-    """The OS writes 0 in `indirect_object_identifier_type` for some rows and
-    NULL for others. Either way the key ignores that column, so a grant lands on
-    top of an existing row rather than beside it — two rows claiming the same
-    service, with no way to say which wins at authorization time."""
+def test_a_denial_is_overridden_not_joined(tmp_path):
+    """A store can carry these rows already, set to denied. A fresh guest does
+    not — it has no `com.apple.screensharing.agent` row at all — but a Mac that
+    has refused Screen Sharing does, and a blessing there overrides rather than
+    fills a gap.
+
+    The existing row is given the other `indirect_object_identifier_type`, since
+    the OS uses both across the table. The key ignores that column, so the grant
+    still lands on top rather than beside — two rows claiming the same service,
+    with no way to say which wins at authorization time.
+    """
     con = _store(tmp_path)
-    existing = [dict(row, indirect_object_identifier_type=0, auth_value=0) for row in bless.tcc_rows()]
+    existing = [dict(row, indirect_object_identifier_type=None, auth_value=0) for row in bless.tcc_rows()]
     con.executemany(bless.insert_sql(), [bless.row_values(row) for row in existing])
     con.executemany(bless.insert_sql(), [bless.row_values(row) for row in bless.tcc_rows()])
     assert _grants(con) == 2
