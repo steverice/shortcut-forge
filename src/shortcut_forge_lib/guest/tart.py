@@ -26,6 +26,10 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 #: tart's help: the flag exists from 2.35.0 but is compiled only under the
 #: Xcode 27 toolchain, so an official binary at or above this is the floor.
@@ -145,3 +149,42 @@ def home() -> Path:
 def disk_image(name: str) -> Path:
     """The guest's disk, which is an ordinary file whenever the guest is stopped."""
     return home() / "vms" / name / "disk.img"
+
+
+def config_path(name: str) -> Path:
+    """The guest's configuration, readable without booting it."""
+    return home() / "vms" / name / "config.json"
+
+
+def machine_id(name: str) -> str | None:
+    """The `ecid` Apple keys a VM's identity on, or None if it cannot be read.
+
+    `tart clone` copies this verbatim while regenerating the MAC — measured on
+    2026-09-17, cloning a base and diffing the two configs. That is what makes
+    two guests *copies of each other* rather than merely similar, and Apple's
+    "Using iCloud with macOS Virtual Machines" turns on exactly that distinction:
+    a second copy started while another runs gets a new identity, and whoever
+    signed in has to reauthenticate by hand.
+
+    Unmeasured, and assumed: that two independently created guests never collide
+    here. `tart create` mints one per VM, so a collision would be surprising.
+    """
+    try:
+        return json.loads(config_path(name).read_text(encoding="utf-8")).get("ecid")
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def same_machine(name: str, others: Iterable[str]) -> list[str]:
+    """Which of `others` are copies of `name` — the same VM, not a lookalike.
+
+    For refusing to start a second copy while one runs. Compare identity rather
+    than names: a clone left behind by a crashed run carries a name this process
+    never chose, and that leaked clone is both the likeliest concurrent copy and
+    the exact case the rule covers. A guest whose identity cannot be read is left
+    out rather than guessed at.
+    """
+    mine = machine_id(name)
+    if mine is None:
+        return []
+    return [other for other in others if other != name and machine_id(other) == mine]

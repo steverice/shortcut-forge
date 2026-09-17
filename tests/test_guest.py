@@ -7,6 +7,7 @@ behind each one are in `docs/macos-guest.md`.
 
 from __future__ import annotations
 
+import json
 import plistlib
 import sqlite3
 from pathlib import Path
@@ -393,3 +394,50 @@ def test_credentials_default_is_outside_any_repo():
     gives a second copy to disagree with."""
     assert "build" not in bake.CREDENTIALS_DIR.parts
     assert bake.CREDENTIALS_DIR.is_absolute()
+
+
+# -- telling a copy from a lookalike -----------------------------------------
+
+
+def _guest_dir(root, name, ecid, mac="00:11:22:33:44:55"):
+    d = root / "vms" / name
+    d.mkdir(parents=True)
+    (d / "config.json").write_text(json.dumps({"ecid": ecid, "macAddress": mac}), encoding="utf-8")
+    return d
+
+
+def test_a_clone_is_found_by_identity_not_by_name(tmp_path, monkeypatch):
+    """Measured: `tart clone` copies `ecid` verbatim and regenerates the MAC, so
+    identity is what says two guests are the same VM. Names cannot: a clone left
+    running by a crashed mint carries a name the next run never chose, and that
+    leaked clone is exactly the concurrent copy Apple re-derives an identity for."""
+    monkeypatch.setenv("TART_HOME", str(tmp_path))
+    _guest_dir(tmp_path, "base", "ECID-A", mac="66:e2:e9:c7:9d:a7")
+    _guest_dir(tmp_path, "left-over-from-a-crash", "ECID-A", mac="be:d9:ce:a3:a2:78")
+    _guest_dir(tmp_path, "someone-elses-guest", "ECID-B")
+    assert tart.same_machine("base", ["left-over-from-a-crash", "someone-elses-guest"]) == ["left-over-from-a-crash"]
+
+
+def test_an_unrelated_guest_does_not_block(tmp_path, monkeypatch):
+    """Refusing on any running guest would block a mint whenever anything else
+    is on the host, which is not the rule Apple states."""
+    monkeypatch.setenv("TART_HOME", str(tmp_path))
+    _guest_dir(tmp_path, "base", "ECID-A")
+    _guest_dir(tmp_path, "unrelated", "ECID-B")
+    assert tart.same_machine("base", ["unrelated"]) == []
+
+
+def test_a_guest_is_not_a_copy_of_itself(tmp_path, monkeypatch):
+    monkeypatch.setenv("TART_HOME", str(tmp_path))
+    _guest_dir(tmp_path, "base", "ECID-A")
+    assert tart.same_machine("base", ["base"]) == []
+
+
+def test_an_unreadable_identity_is_left_out_not_guessed(tmp_path, monkeypatch):
+    monkeypatch.setenv("TART_HOME", str(tmp_path))
+    _guest_dir(tmp_path, "base", "ECID-A")
+    (tmp_path / "vms" / "broken").mkdir(parents=True)
+    (tmp_path / "vms" / "broken" / "config.json").write_text("{not json", encoding="utf-8")
+    assert tart.machine_id("broken") is None
+    assert tart.machine_id("never-created") is None
+    assert tart.same_machine("base", ["broken", "never-created"]) == []
