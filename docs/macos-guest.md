@@ -19,9 +19,10 @@ shortcut-forge bake mint-base --work-dir build/bake
 ```
 
 It refuses to hand back a guest it has not watched render *and* accept a click.
-Read this document to change any of it; the modules carry the findings as
-comments, and `tests/test_guest.py` asserts the ones a later edit could quietly
-undo.
+Measured end to end from an IPSW on 2026-09-16: about twelve minutes, 239,634
+distinct colors, and Safari started by a Dock click confirmed over SSH. Read
+this document to change any of it; the modules carry the findings as comments,
+and `tests/test_guest.py` asserts the ones a later edit could quietly undo.
 
 ## The two flag choices that decide everything
 
@@ -68,6 +69,51 @@ It works, and it delivers what it claims: on first boot the account exists, is
 logged in, answers SSH within about a minute, and **no Setup Assistant pane
 survives**. The password is visible in `ps` on the host for the life of the run,
 so generate a random one per bake rather than reusing a constant.
+
+## Three things a clone will never show you
+
+Found by baking from an IPSW after every step had been "verified" against clones
+of a guest that was already configured. Re-applying configuration to a guest
+that already has it proves nothing, and each of these hid behind that.
+
+**`tart create` holds the guest after it exits.** A `tart run` issued
+immediately dies with:
+
+```
+Error Domain=VZErrorDomain Code=2 "Failed to lock auxiliary storage."
+NSUnderlyingError=... Code=35 "Resource temporarily unavailable"
+```
+
+Nothing is wrong; the restore has not let go. It takes **two** retries at five
+second intervals, reliably, not occasionally. No boot happens on a run that
+never took the lock, so a provisioning run that loses the race can simply be
+reissued — provisioning applies to the first boot, and there was not one.
+
+**`tart stop` is a power cut, not a shutdown.** A file written as root seconds
+before it is *gone* on the next boot. Measured directly with a marker file:
+`touch /Library/Preferences/stop-probe.marker`, `tart stop`, boot, and it does
+not exist. This is how a bake silently lost the Remote Management configuration
+it had just made, then failed four steps later with a refused connection and no
+hint that step 3 was where it went wrong. Shut the guest down from inside —
+`shutdown -h now`, backgrounded so the dying sshd does not hang the call — and
+keep `tart stop` only as a fallback.
+
+**Remote Management and Screen Sharing are different services, and kickstart
+starts the wrong one.** `kickstart -activate` reports *"Activated Remote
+Management"*, writes `ARD_AllLocalUsers` and `ARD_AllLocalUsersPrivs`, exits 0
+— and leaves **nothing listening on 5900**. A client gets `Connection refused`,
+which is a third distinct failure mode from the black frame and the refusal
+message below. What binds the port is the separate launchd daemon, and it ships
+enabled-but-not-running, so `launchctl enable` alone is a no-op:
+
+```bash
+launchctl enable system/com.apple.screensharing
+launchctl kickstart -k system/com.apple.screensharing   # this is what binds 5900
+```
+
+Starting it once survives a reboot. Do both halves in the same step; the failure
+otherwise appears long after the step that was actually incomplete reported
+success.
 
 ## The black screen, and the privilege mask behind it
 

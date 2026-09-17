@@ -57,6 +57,14 @@ MAX_GUESTS = 2
 KICKSTART = "/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart"
 KICKSTART_ARGS = "-activate -configure -allowAccessFor -allUsers -privs -all -restart -agent"
 
+#: The daemon that actually answers on 5900. Activating Remote Management does
+#: **not** start it: kickstart reports "Activated Remote Management", writes
+#: `ARD_AllLocalUsers` and `ARD_AllLocalUsersPrivs`, and leaves nothing
+#: listening, so a client gets `Connection refused` rather than a black frame.
+#: Remote Management and Screen Sharing are separate services and this is the
+#: one `tart run --vnc` connects to. Starting it once survives a reboot.
+SCREEN_SHARING_JOB = "system/com.apple.screensharing"
+
 #: What the proof clicks, as a fraction of the framebuffer: Safari in the Dock,
 #: measured at 1024x768. Held as a fraction so a different guest resolution
 #: still lands on the Dock, and checked by name afterwards so a miss is reported
@@ -71,6 +79,14 @@ APP_PROCESSES = r"ps -Ao comm= | grep '\.app/Contents/MacOS/' | sed 's|.*/||' | 
 PROVISION_TIMEOUT = 1800.0
 BOOT_TIMEOUT = 420.0
 STOP_TIMEOUT = 180.0
+
+#: What tart says when the previous holder has not let go of the guest yet.
+LOCKED = "Failed to lock auxiliary storage"
+
+#: How long to keep retrying the start, and how long a start that survives is
+#: taken to have won the lock.
+LOCK_TIMEOUT = 120.0
+LOCK_SETTLE = 5.0
 
 #: After SSH answers, the window server and the Dock are still arriving.
 DESKTOP_SETTLE = 20.0
@@ -102,6 +118,23 @@ class Baked:
 def new_password() -> str:
     """Fresh per bake: it is visible in `ps` while tart provisions the guest."""
     return secrets.token_urlsafe(18)
+
+
+def sharing_script(password: str) -> str:
+    """Turn on Remote Management, then start the daemon that serves the screen.
+
+    Both halves are needed and neither implies the other. Kickstart configures
+    ARD and reports success while nothing listens on 5900; `launchctl enable` on
+    its own is a no-op when the job is already enabled-but-not-running, which is
+    how a fresh guest ships. `kickstart -k` is what binds the port.
+    """
+    return "\n".join(
+        [
+            f"{ssh.sudo(password, f'{KICKSTART} {KICKSTART_ARGS}')} 2>&1 | tail -3",
+            f"{ssh.sudo(password, f'launchctl enable {SCREEN_SHARING_JOB}')} 2>&1",
+            f"{ssh.sudo(password, f'launchctl kickstart -k {SCREEN_SHARING_JOB}')} 2>&1",
+        ]
+    )
 
 
 def missing_tools(tart_bin: str) -> list[str]:
@@ -201,20 +234,20 @@ def bake(
         on_credentials(baked)
     step(f"    provisioned; SSH answers at {host}")
 
-    step("3/6 turn on Remote Management, mode and privilege mask together")
-    kick = ssh.run(
+    step("3/6 turn on Remote Management, and start the service that serves the screen")
+    turned_on = ssh.run(
         host,
-        f"{ssh.sudo(password, f'{KICKSTART} {KICKSTART_ARGS}')} 2>&1 | tail -3",
+        sharing_script(password),
         user=username,
         password=password,
         work_dir=work_dir,
         timeout=300,
     )
-    if kick.returncode:
-        raise BakeError(f"kickstart failed: {kick.stdout.strip()} {kick.stderr.strip()}")
+    if turned_on.returncode:
+        raise BakeError(f"could not turn on sharing: {turned_on.stdout.strip()} {turned_on.stderr.strip()}")
 
-    step("4/6 stop, and write the blessing into the parked disk")
-    _stop(name, tart_bin=tart_bin)
+    step("4/6 shut down cleanly, and write the blessing into the parked disk")
+    _stop(name, tart_bin=tart_bin, host=host, username=username, password=password, work_dir=work_dir)
     write_blessing(tart.disk_image(name), work_dir, on_step=on_step)
 
     step("5/6 boot again — a grant that does not survive a restart is not a grant")
@@ -231,7 +264,7 @@ def bake(
     step("6/6 prove the screen renders and that a click lands")
     prove(host, username=username, password=password, work_dir=work_dir, on_step=on_step)
 
-    _stop(name, tart_bin=tart_bin)
+    _stop(name, tart_bin=tart_bin, host=host, username=username, password=password, work_dir=work_dir)
     step(f"baked: {name} is stopped and ready to clone")
     return Baked(name=name, ip=host, username=username, password=password)
 
@@ -438,6 +471,34 @@ def wait_for(probe: Callable[[], T | None], *, timeout: float, interval: float =
         time.sleep(interval)
 
 
+def _start(
+    name: str,
+    log: Path,
+    *,
+    tart_bin: str,
+    provisioning: tart.Provisioning | None,
+) -> subprocess.Popen[bytes]:
+    """`tart run`, retried while the previous holder still owns the lock."""
+    deadline = time.monotonic() + LOCK_TIMEOUT
+    while True:
+        before = log.stat().st_size if log.exists() else 0
+        with log.open("ab") as sink:
+            proc = subprocess.Popen(
+                [tart_bin, *tart.run_args(name, provisioning=provisioning)],
+                stdout=sink,
+                stderr=subprocess.STDOUT,
+                env={**os.environ, **tart.HEADLESS_ENV},
+            )
+        try:
+            proc.wait(timeout=LOCK_SETTLE)
+        except subprocess.TimeoutExpired:
+            return proc  # still running, so it took the lock
+        said = log.read_text(errors="replace")[before:] if log.exists() else ""
+        if LOCKED not in said or time.monotonic() >= deadline:
+            raise BakeError(f"tart run exited with {proc.returncode} before the guest started: {said.strip()[-300:]}")
+        time.sleep(LOCK_SETTLE)
+
+
 def _tart(tart_bin: str, args: list[str], *, timeout: float = 120) -> str:
     done = subprocess.run([tart_bin, *args], capture_output=True, text=True, timeout=timeout, check=False)
     if done.returncode:
@@ -474,15 +535,17 @@ def _boot(
     tart's output goes to a file, never a pipe: `tart run` does not exit and
     keeps writing, so a pipe nobody drains fills and wedges the guest, with
     "it never came up" as the only symptom.
+
+    The start is retried, because the boot that follows `tart create` races the
+    restore's own hold on the guest. `tart create` exits before Virtualization
+    releases the auxiliary storage, and a run issued in that window dies at once
+    with `Failed to lock auxiliary storage` over `EAGAIN`. Nothing has gone
+    wrong; the lock is simply not free yet. No boot happens either, so a
+    provisioning run that loses this race can be reissued — provisioning applies
+    to the first boot, and there was not one.
     """
     log = work_dir / f"{name}-tart.log"
-    with log.open("ab") as sink:
-        proc = subprocess.Popen(
-            [tart_bin, *tart.run_args(name, provisioning=provisioning)],
-            stdout=sink,
-            stderr=subprocess.STDOUT,
-            env={**os.environ, **tart.HEADLESS_ENV},
-        )
+    proc = _start(name, log, tart_bin=tart_bin, provisioning=provisioning)
 
     def answering() -> str | None:
         if proc.poll() is not None:
@@ -504,12 +567,42 @@ def _boot(
     return host
 
 
-def _stop(name: str, *, tart_bin: str) -> None:
-    """Stop, then wait for tart to say so: the disk is not a file until it does."""
-    _tart(tart_bin, tart.stop_args(name), timeout=STOP_TIMEOUT)
+def _stop(
+    name: str,
+    *,
+    tart_bin: str,
+    host: str | None = None,
+    username: str = "",
+    password: str = "",
+    work_dir: Path | None = None,
+) -> None:
+    """Shut the guest down from inside, and wait for tart to agree it is off.
+
+    `tart stop` is a power cut, not a shutdown: a file written as root seconds
+    before it is simply gone on the next boot, measured with a marker file. That
+    is how a bake lost the Remote Management configuration it had just made and
+    then failed, four steps later, with a refused connection. So ask the guest
+    to shut itself down and let it flush; `tart stop` stays as the fallback for
+    a guest that will not, where a lost write beats a hang.
+    """
+    if host and work_dir is not None:
+        # Backgrounded and detached: shutdown kills sshd, and a foreground call
+        # would wait out its own timeout for a channel that is never closing.
+        ssh.run(
+            host,
+            f"({ssh.sudo(password, 'shutdown -h now')}) >/dev/null 2>&1 &",
+            user=username,
+            password=password,
+            work_dir=work_dir,
+            timeout=60,
+        )
 
     def stopped() -> bool | None:
         return True if _guests(tart_bin).get(name) == "stopped" else None
 
+    if host and wait_for(stopped, timeout=STOP_TIMEOUT, interval=3.0) is not None:
+        return
+
+    _tart(tart_bin, tart.stop_args(name), timeout=STOP_TIMEOUT)
     if wait_for(stopped, timeout=STOP_TIMEOUT, interval=3.0) is None:
         raise BakeError(f"{name} did not reach a stopped state; its disk cannot be written safely")

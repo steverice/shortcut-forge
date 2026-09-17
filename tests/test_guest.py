@@ -233,6 +233,33 @@ def test_missing_tools_names_the_tart_binary_it_was_given():
     assert "/nope/tart" in bake.missing_tools("/nope/tart")
 
 
+#: What `tart run` wrote when it was issued the instant `tart create` returned,
+#: captured verbatim. The restore had not released the guest yet.
+LOCKED_OUTPUT = (
+    'Error Domain=VZErrorDomain Code=2 "Failed to lock auxiliary storage." '
+    "UserInfo={NSLocalizedFailure=Invalid virtual machine configuration., "
+    "NSLocalizedFailureReason=Failed to lock auxiliary storage., "
+    'NSUnderlyingError=0x7bfca18150 {Error Domain=NSPOSIXErrorDomain Code=35 "Resource temporarily unavailable"}}'
+)
+
+
+def test_turning_on_sharing_does_both_halves():
+    """Kickstart activates Remote Management and leaves nothing on 5900. The
+    screensharing daemon is a separate service and is what a client connects to,
+    so a script with only the first half yields `Connection refused` four steps
+    later, long after the step that was actually incomplete reported success."""
+    script = bake.sharing_script("pw")
+    assert bake.KICKSTART in script
+    assert f"launchctl kickstart -k {bake.SCREEN_SHARING_JOB}" in script
+
+
+def test_the_lock_message_matches_what_tart_actually_prints():
+    """The boot after a create races the restore's own hold on the guest, and
+    this string is how the loser is told apart from a real failure. A wrong one
+    turns a retryable race into a failed bake twenty minutes in."""
+    assert bake.LOCKED in LOCKED_OUTPUT
+
+
 # -- writing the grants twice ------------------------------------------------
 
 #: `access` as macOS 27.0 declares it, read verbatim out of a guest's store. The
