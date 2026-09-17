@@ -579,14 +579,31 @@ had been launched from a sandboxed agent shell, so one was started by hand from 
 Terminal in a GUI session with the keychain verified unlocked and `no-timeout`.
 Identical failure. That was the leading theory and it was wrong.
 
-**Retesting when a 27.x lands is two minutes and needs no human.** Boot a guest
-and count:
+**Retesting when a 27.x lands is two minutes and needs no human.** Boot a guest,
+give it a minute, and count — the denominator first, because a zero means
+nothing until you know the guest has tried:
 
 ```sh
+# 1. Did it even attempt? Below ~5 on a freshly booted guest, wait longer.
 log show --last 30m --predicate 'process == "apsd"' --style compact \
-  | grep -c 'obtained BAA certs'      # any number above zero means it is fixed
-netstat -an | grep 5223               # a registered guest holds a connection here
+  | grep -c 'attempting to fetch BAA certs'
+
+# 2. Did any attempt succeed? Above zero means fixed.
+log show --last 30m --predicate 'process == "apsd"' --style compact \
+  | grep -c 'obtained BAA certs'
+
+# 3. A registered guest also holds a connection here.
+netstat -an | grep 5223
 ```
+
+Run this on a guest that has just booted: `apsd` retries hard at startup — 8
+attempts inside the first 40 seconds — and then backs off to about 68 across a
+day, so a window on a guest that has been idle for hours can show zero of
+everything and look like the fault is absent. Both `grep -c 0` and the empty
+`netstat` exit **1**, which is the expected result on a broken guest; a wrapper
+using `set -e` will read the correct answer as a command failure. Verified
+against a known-bad guest on 2026-09-17, which is how the denominator step and
+this paragraph came to exist.
 
 **The action itself works**, which is worth keeping separate from the above.
 `shortcuts run` on the publisher raised Shortcuts' own sheet — *Allow "Link
