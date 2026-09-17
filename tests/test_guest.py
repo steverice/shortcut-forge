@@ -415,7 +415,8 @@ def test_a_clone_is_found_by_identity_not_by_name(tmp_path, monkeypatch):
     _guest_dir(tmp_path, "base", "ECID-A", mac="66:e2:e9:c7:9d:a7")
     _guest_dir(tmp_path, "left-over-from-a-crash", "ECID-A", mac="be:d9:ce:a3:a2:78")
     _guest_dir(tmp_path, "someone-elses-guest", "ECID-B")
-    assert tart.same_machine("base", ["left-over-from-a-crash", "someone-elses-guest"]) == ["left-over-from-a-crash"]
+    found = tart.copies_of(tart.machine_id("base"), ["left-over-from-a-crash", "someone-elses-guest"])
+    assert found == ["left-over-from-a-crash"]
 
 
 def test_an_unrelated_guest_does_not_block(tmp_path, monkeypatch):
@@ -424,20 +425,39 @@ def test_an_unrelated_guest_does_not_block(tmp_path, monkeypatch):
     monkeypatch.setenv("TART_HOME", str(tmp_path))
     _guest_dir(tmp_path, "base", "ECID-A")
     _guest_dir(tmp_path, "unrelated", "ECID-B")
-    assert tart.same_machine("base", ["unrelated"]) == []
+    assert tart.copies_of(tart.machine_id("base"), ["unrelated"]) == []
 
 
-def test_a_guest_is_not_a_copy_of_itself(tmp_path, monkeypatch):
+def test_the_base_running_is_itself_a_conflict(tmp_path, monkeypatch):
+    """A clone must not start while its base runs, so a caller passing the base
+    among the running guests should see it matched rather than filtered out."""
     monkeypatch.setenv("TART_HOME", str(tmp_path))
     _guest_dir(tmp_path, "base", "ECID-A")
-    assert tart.same_machine("base", ["base"]) == []
+    assert tart.copies_of(tart.machine_id("base"), ["base"]) == ["base"]
 
 
-def test_an_unreadable_identity_is_left_out_not_guessed(tmp_path, monkeypatch):
+def test_an_unknown_identity_cannot_be_stepped_over(tmp_path, monkeypatch):
+    """The precondition lives in the signature. An earlier version took a name
+    and resolved it internally, so an unreadable base config yielded an empty
+    list — a check answering "no conflicts" without having looked, which is the
+    silent-success shape `docs/macos-guest.md` is largely about."""
+    monkeypatch.setenv("TART_HOME", str(tmp_path))
+    assert tart.machine_id("base-that-is-not-there") is None
+    # `copies_of` takes the identity, so that None has to be handled before the
+    # question can be asked at all.
+    import inspect
+
+    assert list(inspect.signature(tart.copies_of).parameters) == ["machine", "among"]
+
+
+def test_an_unreadable_guest_is_left_out_not_guessed(tmp_path, monkeypatch):
+    """The permissive direction, deliberately: a half-deleted VM directory should
+    not block a release. A caller for whom a false pass costs more should treat
+    an unreadable guest as a conflict itself."""
     monkeypatch.setenv("TART_HOME", str(tmp_path))
     _guest_dir(tmp_path, "base", "ECID-A")
     (tmp_path / "vms" / "broken").mkdir(parents=True)
     (tmp_path / "vms" / "broken" / "config.json").write_text("{not json", encoding="utf-8")
     assert tart.machine_id("broken") is None
     assert tart.machine_id("never-created") is None
-    assert tart.same_machine("base", ["broken", "never-created"]) == []
+    assert tart.copies_of(tart.machine_id("base"), ["broken", "never-created"]) == []

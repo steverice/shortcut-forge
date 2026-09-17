@@ -175,16 +175,27 @@ def machine_id(name: str) -> str | None:
         return None
 
 
-def same_machine(name: str, others: Iterable[str]) -> list[str]:
-    """Which of `others` are copies of `name` — the same VM, not a lookalike.
+def copies_of(machine: str, among: Iterable[str]) -> list[str]:
+    """Which of `among` are copies of the VM with this identity.
 
     For refusing to start a second copy while one runs. Compare identity rather
     than names: a clone left behind by a crashed run carries a name this process
     never chose, and that leaked clone is both the likeliest concurrent copy and
-    the exact case the rule covers. A guest whose identity cannot be read is left
-    out rather than guessed at.
+    the exact case the rule covers.
+
+    It takes the **identity**, not a name, so that a caller cannot ask this
+    question without first establishing the identity it is asking about. An
+    earlier version took a name and looked it up here, which meant an unreadable
+    base config produced an empty list — a check answering "no conflicts"
+    without having looked, which is the shape most of `docs/macos-guest.md` is
+    about. `machine_id()` returns None there, and the None is now impossible to
+    step over on the way in.
+
+    A guest in `among` whose own identity cannot be read is left out rather than
+    guessed at. That direction is deliberate and it is the permissive one: a
+    half-deleted VM directory should not block a release. A caller for whom a
+    false pass costs more than a false refusal — which is true of anything that
+    has already cloned and imported before it finds out — should treat an
+    unreadable guest as a conflict itself.
     """
-    mine = machine_id(name)
-    if mine is None:
-        return []
-    return [other for other in others if other != name and machine_id(other) == mine]
+    return [other for other in among if machine_id(other) == machine]
