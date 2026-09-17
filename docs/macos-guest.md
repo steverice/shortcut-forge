@@ -502,13 +502,15 @@ answering **Always Allow** once during bake bakes them into the base. Do not let
 SSH time out while a prompt is pending: the invocation dies, and a later click
 lands on nothing while the next run raises a fresh prompt.
 
-**Killing Shortcuts is the only way back from a timed-out run.** The warning
+**Killing Shortcuts is the cheap way back from a timed-out run.** The warning
 above is worth stating as a recovery procedure, because it was paid for twice:
 once SSH times out, the dialog on screen belongs to a dead invocation, and
 clicking its buttons does nothing at all — the framebuffer does not change and
 no error appears anywhere. `killall shortcuts Shortcuts ShortcutsViewService
 BackgroundShortcutRunner` clears it, after which a fresh run raises a fresh
-prompt that can be answered normally.
+prompt that can be answered normally. Restarting the guest would clear it too;
+nobody here needed to, but a guest where the `killall` does not take is not
+stuck.
 
 `shortcuts run --output-path -` exists on macOS 27 and is the supported way to
 get a shortcut's result without the clipboard. Untested past the consent prompt.
@@ -605,8 +607,9 @@ device. Whether a clone keeps a signed-in Apple session is **untested**.
 Base and clone must never run at once (identical machine identifiers), and
 Virtualization allows **two** concurrent macOS guests per host.
 
-**A serialized clone presents the base's identity, and that is measured.** In a
-clone, `akd` logged the attestation chain it was using:
+**A serialized clone presents an identity it did not create, and the certificate
+says when it was issued.** In a clone, `akd` logged the attestation chain it was
+using:
 
 ```
 Basic Attestation VM Sub CA1 <- Basic Attestation VM Root CA - G1
@@ -616,13 +619,26 @@ Basic Attestation VM Sub CA1 <- Basic Attestation VM Root CA - G1
 
 That `notBefore` is a 24-hour backdate of an issuance at Sep 16 22:32 — the
 minute the *base* was baked, before the clone existed. So the clone handed Apple
-a certificate issued to the base and `akd` accepted it rather than requesting its
+a certificate it did not obtain, and `akd` accepted it rather than requesting its
 own. To read it in any guest:
 
 ```sh
 log show --last 10m --predicate 'process == "akd"' --style compact \
   | grep -A4 'Returning cached certificates'
 ```
+
+**Two readings fit that evidence equally, and they differ in what a re-bake
+costs.** Either the certificate belongs to the *base* and the clone inherited it,
+or it belongs to *this host* and every guest on this Mac presents the same one.
+Both predict exactly what was observed, and the difference is not academic: if
+identity is host-derived, re-baking a base inherits it and costs no new Apple
+Account sign-in, and if it is base-derived, every re-baked base needs the hand
+step again — which is the occasion the mint spec's §6 is trying to confine.
+
+The distinguishing test is one fresh guest: `tart create` from the IPSW, no
+cloning, and read its cached certificate. The same Sep 16 22:32 issuance means
+host-derived; a new one at its own creation minute means base-derived. Untested
+as of 2026-09-17.
 
 **Concurrency is what breaks it, per Apple.** *Using iCloud with macOS Virtual
 Machines* says the framework detects a second copy started **while another is
