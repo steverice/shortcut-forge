@@ -21,6 +21,7 @@ after a restart, so it cannot mistake a momentary grant for a durable one.
 
 from __future__ import annotations
 
+import json
 import os
 import plistlib
 import re
@@ -118,6 +119,61 @@ class Baked:
 def new_password() -> str:
     """Fresh per bake: it is visible in `ps` while tart provisions the guest."""
     return secrets.token_urlsafe(18)
+
+
+#: Where a bake records how to reach the guest it made. Under the cache
+#: directory rather than a repo's `build/`, which `git clean -xdf` erases and
+#: which a worktree gives a second copy of. Both matter more once a base carries
+#: a signed-in Apple Account: losing the record then costs a person at a screen
+#: rather than an unattended re-bake.
+CREDENTIALS_DIR = Path.home() / ".cache" / "shortcut-forge" / "bake"
+
+
+class NoCredentialsError(BakeError):
+    """No record of how to reach that guest. The answer is almost always to
+    re-bake: the password is generated per run and stored nowhere else."""
+
+
+def credentials_path(name: str, *, directory: Path | None = None) -> Path:
+    return (directory or CREDENTIALS_DIR) / f"{name}.json"
+
+
+def save_credentials(baked: Baked, *, directory: Path | None = None) -> Path:
+    """Write the record, readable only by its owner.
+
+    Called the moment SSH first answers, before anything that can fail — a bake
+    that dies later must still leave a guest somebody can log in to.
+    """
+    path = credentials_path(baked.name, directory=directory)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch(mode=0o600, exist_ok=True)
+    path.chmod(0o600)
+    path.write_text(
+        json.dumps({"name": baked.name, "user": baked.username, "password": baked.password}, indent=2),
+        encoding="utf-8",
+    )
+    return path
+
+
+def credentials(name: str, *, directory: Path | None = None) -> Baked:
+    """How to reach a guest a bake made, by name.
+
+    Call this rather than reading the file: where the record lives is this
+    module's business and is expected to change. A password whose loss costs a
+    human belongs in the login keychain rather than a file, and moving it there
+    should not reach a caller.
+
+    `ip` comes back empty — a guest gets a fresh address from DHCP on every
+    boot, so ask `tart ip` instead of trusting a stored one.
+    """
+    path = credentials_path(name, directory=directory)
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+        return Baked(name=record["name"], ip="", username=record["user"], password=record["password"])
+    except FileNotFoundError as e:
+        raise NoCredentialsError(f"no credentials for {name} at {path}; re-bake it") from e
+    except (json.JSONDecodeError, KeyError, OSError) as e:
+        raise NoCredentialsError(f"the credentials for {name} at {path} are unreadable: {e}") from e
 
 
 def sharing_script(password: str) -> str:

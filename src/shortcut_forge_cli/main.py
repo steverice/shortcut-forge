@@ -8,7 +8,6 @@ has nothing else to call. A generator written in Python should call
 from __future__ import annotations
 
 import argparse
-import json
 from importlib.metadata import version
 from pathlib import Path
 
@@ -89,7 +88,7 @@ def add_bake_command(subparsers: argparse._SubParsersAction) -> None:
         "--work-dir",
         type=Path,
         default=Path("build/bake"),
-        help="where the credentials, tart's log, and the proof screenshot go",
+        help="where tart's log and the proof screenshot go (credentials go to ~/.cache/shortcut-forge/bake)",
     )
     sub.add_argument("--username", default=tart.DEFAULT_USERNAME, help="the account to provision")
     sub.add_argument("--full-name", default=tart.DEFAULT_FULL_NAME, help="that account's full name")
@@ -130,12 +129,7 @@ def handle_bake(args: argparse.Namespace) -> int:
 
     def save(baked: guest_bake.Baked) -> None:
         """The moment they work, before anything that can fail."""
-        record = args.work_dir / f"{baked.name}.json"
-        record.write_text(
-            json.dumps({"name": baked.name, "user": baked.username, "password": baked.password}, indent=2),
-            encoding="utf-8",
-        )
-        record.chmod(0o600)
+        record = guest_bake.save_credentials(baked)
         warning(f"credentials for {baked.name} saved to {record} — it is a throwaway guest, but treat it as a secret")
 
     try:

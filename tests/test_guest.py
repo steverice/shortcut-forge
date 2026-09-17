@@ -355,3 +355,41 @@ def test_import_questions_counts_what_a_clean_build_asks(tmp_path):
     debug.write_bytes(plistlib.dumps({"WFWorkflowActions": [{}, {}]}))
     assert bake.import_questions(clean) == 3
     assert bake.import_questions(debug) == 0
+
+
+# -- finding a guest again ---------------------------------------------------
+
+
+def test_credentials_round_trip(tmp_path):
+    made = bake.Baked(name="g", ip="10.0.0.5", username="probe", password="hunter2")
+    written = bake.save_credentials(made, directory=tmp_path)
+    assert written.stat().st_mode & 0o777 == 0o600, "a password file is readable only by its owner"
+    found = bake.credentials("g", directory=tmp_path)
+    assert (found.name, found.username, found.password) == ("g", "probe", "hunter2")
+
+
+def test_credentials_does_not_hand_back_a_stored_address(tmp_path):
+    """DHCP gives the guest a fresh address per boot, so a stored one is a stale
+    one. It comes back empty to force the caller to ask `tart ip` instead."""
+    bake.save_credentials(bake.Baked(name="g", ip="10.0.0.5", username="probe", password="pw"), directory=tmp_path)
+    assert bake.credentials("g", directory=tmp_path).ip == ""
+
+
+def test_a_missing_record_is_nameable_and_says_what_to_do(tmp_path):
+    """Callers need to distinguish "never baked" from a corrupt file, and the
+    remedy is the same either way: the password exists nowhere else."""
+    with pytest.raises(bake.NoCredentialsError, match="re-bake"):
+        bake.credentials("never-baked", directory=tmp_path)
+
+
+def test_an_unreadable_record_is_the_same_named_error(tmp_path):
+    (tmp_path / "g.json").write_text("{not json", encoding="utf-8")
+    with pytest.raises(bake.NoCredentialsError, match="unreadable"):
+        bake.credentials("g", directory=tmp_path)
+
+
+def test_credentials_default_is_outside_any_repo():
+    """`build/` is gitignored but `git clean -xdf` erases it, and a worktree
+    gives a second copy to disagree with."""
+    assert "build" not in bake.CREDENTIALS_DIR.parts
+    assert bake.CREDENTIALS_DIR.is_absolute()

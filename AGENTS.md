@@ -115,4 +115,4 @@ type it. Run `make check` before every commit. Never bump the version locally.
 | `xcrun simctl`, Device Hub or Simulator.app | driving a simulator | for `shortcut_forge_lib.sim` |
 | `openssl` | the throwaway CA | for `sim.certs` |
 | `osascript`, `screencapture` | window geometry and taps | for `shortcut_forge_lib.sim` |
-| `tart` 2.37+, `vncdo`, `hdiutil`, `PlistBuddy` | baking and driving a macOS guest | for `shortcut_forge_lib.guest` |
+| `tart` 2.37+ (from mise, `github:openai/tart` — **not** Homebrew, which pins 2.32.1 and fails to install), `vncdo`, `hdiutil`, `PlistBuddy` | baking and driving a macOS guest | for `shortcut_forge_lib.guest` |

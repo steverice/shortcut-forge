@@ -24,6 +24,40 @@ distinct colors, and Safari started by a Dock click confirmed over SSH. Read
 this document to change any of it; the modules carry the findings as comments,
 and `tests/test_guest.py` asserts the ones a later edit could quietly undo.
 
+## Installing tart, which is the one step with no obvious right answer
+
+On this host it comes from **mise**, pinned in
+`~/.config/mise/config.toml`:
+
+```toml
+"github:openai/tart" = "2.37.0"
+```
+
+Note the repository: `cirruslabs/tart` 301-redirects to **`openai/tart`**, and
+the GitHub release is the only source that carries 2.37.0. It ships as
+`tart.app`, a bundle rather than a bare binary.
+
+**Homebrew is a dead end, in two ways at once.** `brew install
+cirruslabs/cli/tart` taps and then dies with `Calling depends_on :macos with
+depends_on macos: is disabled`; and even were it installable, that formula pins
+**2.32.1**, below `tart.MIN_TART`. Reaching for `brew` first costs an hour and
+ends at a version the code refuses.
+
+A mise-installed tart is **not on `PATH`** — the shim lives at
+`~/.local/share/mise/shims/tart`, so `which tart` finds nothing and a search of
+the Cellar, the Caskroom and `$HOME` turns up nothing either. It is installed
+and it works; it is just invisible to every obvious check. Put the shim
+directory on `PATH`, or pass `--tart ~/.local/share/mise/shims/tart`.
+
+**Credentials do not live in the work directory.** A bake writes tart's log and
+the proof screenshot to `--work-dir`, but the record of how to reach the guest
+goes to `~/.cache/shortcut-forge/bake/<name>.json`, mode 0600, and is read back
+with `guest.bake.credentials(name)`. Call that rather than opening the file: a
+repo's `build/` is erased by `git clean -xdf` and duplicated by every worktree,
+and a password whose loss costs a person at a screen — which is what a base
+carrying a signed-in Apple Account costs — belongs somewhere sturdier than
+either. The lookup exists so that move does not reach a caller.
+
 ## The two flag choices that decide everything
 
 **`--vnc`, not `--vnc-experimental`.** Both render. The experimental one killed
@@ -475,7 +509,14 @@ Written down so nobody assumes an answer. Each is cheap once a guest exists.
 5. **Does a clone keep a signed-in Apple Account session?** `tart clone` does not
    regenerate the `VZMacMachineIdentifier` and Apple derives a VM's iCloud
    identity from the host's Secure Enclave, so it plausibly does — untested.
-6. **Do setup questions survive a synthesized import?** `docs/simulator-harness.md`
+6. **How do you read, and assert, that Shortcuts iCloud sync is off in a
+   guest?** `bake` does not check, and it should: a synced library carries one
+   clone's imports into the next clone's, which is exactly the more-than-one-copy
+   -by-name state the publisher refuses to mint from. Unknown here is how to read
+   that setting without a GUI, which is why this is a question rather than a
+   check — a sync assertion that cannot actually see the setting would report
+   success without having looked, the failure shape this whole document is about.
+7. **Do setup questions survive a synthesized import?** `docs/simulator-harness.md`
    records a link that arrived with zero import questions where its siblings had
    three, the one difference being that its clicks were synthesized rather than
    human. Every import here is synthesized. An imported copy that lost its
