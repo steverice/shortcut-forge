@@ -104,28 +104,37 @@ def new_password() -> str:
     return secrets.token_urlsafe(18)
 
 
+def missing_tools(tart_bin: str) -> list[str]:
+    """Which of the four tools a bake needs are not on this host."""
+    return [
+        tool
+        for tool in (tart_bin, "vncdo", "hdiutil", "/usr/libexec/PlistBuddy")
+        if shutil.which(tool) is None and not Path(tool).exists()
+    ]
+
+
 def preconditions(
     name: str,
     *,
-    tart_bin: str,
     running: int,
     existing: list[str],
     host_major: int,
     free_bytes: int,
+    missing: list[str],
 ) -> list[str]:
     """Every reason this cannot work, gathered so one call names them all.
 
     Refusing up front matters more here than usual: the alternative is finding
     out twenty minutes into a restore.
+
+    It reads nothing itself. Each fact is measured by the caller and passed in,
+    so the refusals can be tested without the test's own host deciding the
+    answer — which it did, twice, before this took its facts as arguments.
     """
     problems = []
     if host_major < 27:
         problems.append(f"host is macOS {host_major}; provisioning needs 27 or newer on BOTH host and guest")
-    problems += [
-        f"{tool} is not available"
-        for tool in (tart_bin, "vncdo", "hdiutil", "/usr/libexec/PlistBuddy")
-        if shutil.which(tool) is None and not Path(tool).exists()
-    ]
+    problems += [f"{tool} is not available" for tool in missing]
     if free_bytes < NEEDED_BYTES:
         problems.append(f"{free_bytes // 1024**3} GB free, need about {NEEDED_BYTES // 1024**3}")
     if name in existing:
@@ -162,11 +171,11 @@ def bake(
     known = _guests(tart_bin)
     refusals = preconditions(
         name,
-        tart_bin=tart_bin,
         running=sum(state == "running" for state in known.values()),
         existing=list(known),
         host_major=host_major(),
         free_bytes=shutil.disk_usage("/").free,
+        missing=missing_tools(tart_bin),
     )
     if refusals:
         raise BakeError("; ".join(refusals))

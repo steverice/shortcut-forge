@@ -127,15 +127,26 @@ def test_rendered_rejects_a_flat_frame(colors, expected):
 
 # -- reading tart's own state ------------------------------------------------
 
-LISTING = """Source Name           Disk  Size  Accessed       State
-local  bw-mint-virgin 50 GB 35 GB 55 minutes ago stopped
-local  bw-mint-demo   50 GB 36 GB just now       running
-"""
+LISTING = """[
+  {"Source": "local", "Name": "bw-mint-virgin", "State": "stopped", "Disk": 50,
+   "Accessed": "2026-09-16T23:54:31Z", "Size": 34, "Running": false},
+  {"Source": "local", "Name": "bw-mint-demo", "State": "running", "Disk": 50,
+   "Accessed": "2026-09-16T23:58:02Z", "Size": 36, "Running": true}
+]"""
 
 
-def test_guests_parses_a_free_text_accessed_column():
-    """`Accessed` holds `55 minutes ago`, so the field count varies by row."""
+def test_guests_reads_the_json_listing():
     assert tart.guests(LISTING) == {"bw-mint-virgin": "stopped", "bw-mint-demo": "running"}
+
+
+def test_the_listing_is_asked_for_as_json():
+    """The text table's `Accessed` column is free text, so its field count
+    varies per row and a positional parser reads the wrong thing on some."""
+    assert tart.list_args() == ["list", "--format", "json"]
+
+
+def test_an_empty_listing_is_no_guests_not_a_crash():
+    assert tart.guests("") == {}
 
 
 def test_disk_image_follows_tart_home(monkeypatch):
@@ -191,7 +202,7 @@ def test_known_hosts_is_per_call(tmp_path):
 def test_preconditions_names_every_problem_at_once():
     """Twenty minutes into a restore is the wrong moment to learn the second one."""
     problems = bake.preconditions(
-        "taken", tart_bin="/nope/tart", running=2, existing=["taken"], host_major=26, free_bytes=0
+        "taken", running=2, existing=["taken"], host_major=26, free_bytes=0, missing=["/nope/tart"]
     )
     joined = " ".join(problems)
     assert "macOS 26" in joined
@@ -201,18 +212,24 @@ def test_preconditions_names_every_problem_at_once():
     assert "0 GB free" in joined
 
 
-def test_preconditions_passes_a_healthy_host():
+def test_preconditions_reads_nothing_of_its_own():
+    """Every fact arrives as an argument, so CI's own host cannot decide the
+    answer — it did, twice, when this measured free space and PATH itself."""
     assert (
         bake.preconditions(
             "fresh",
-            tart_bin="sh",
             running=0,
             existing=["other"],
             host_major=27,
             free_bytes=bake.NEEDED_BYTES,
+            missing=[],
         )
         == []
     )
+
+
+def test_missing_tools_names_the_tart_binary_it_was_given():
+    assert "/nope/tart" in bake.missing_tools("/nope/tart")
 
 
 def test_the_probe_point_scales_with_the_framebuffer():

@@ -22,6 +22,7 @@ or newer on **both** host and guest — an absolute floor, not a relative rule.
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -122,22 +123,18 @@ def delete_args(name: str) -> list[str]:
 
 
 def list_args() -> list[str]:
-    return ["list"]
+    """JSON, because the text table cannot be parsed by column.
+
+    Its `Accessed` column holds free text — `55 minutes ago` — so the field
+    count varies per row and a positional parser reads the wrong thing on some
+    of them. The JSON gives `Name` and `State` as keys.
+    """
+    return ["list", "--format", "json"]
 
 
 def guests(listing: str) -> dict[str, str]:
-    """Guest name to state, from `tart list`.
-
-    Parsed by position from each end rather than by column offset: the
-    `Accessed` column holds free text like `55 minutes ago`, so the number of
-    fields varies and only the first two and the last are fixed.
-    """
-    states = {}
-    for line in listing.splitlines()[1:]:
-        parts = line.split()
-        if len(parts) >= 3:
-            states[parts[1]] = parts[-1]
-    return states
+    """Guest name to state, from `tart list --format json`."""
+    return {row["Name"]: row["State"] for row in json.loads(listing or "[]")}
 
 
 def home() -> Path:
