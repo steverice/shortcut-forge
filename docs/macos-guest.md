@@ -529,16 +529,30 @@ returns cleanly: vncdo exits 0 and hands back a well-formed 1024×768 PNG. A
 smoke check that tests `exit == 0` passes on exactly the condition it exists to
 catch.
 
-Two discriminators, measured here on 1024×768:
+Two discriminators, at 1024×768 — which is what a blessed guest runs at, since
+the blessing forces the scale to 1:
 
 | | black | rendering |
 |---|---|---|
-| distinct colors | 1 | ~242,000 |
-| PNG bytes | 9,239 | 47,023 – 420,579 |
+| distinct colors | 1 | 7,552 – 245,469 |
+| PNG bytes | 2,367 | 47,023 – 958,349 |
 
-Counting colors needs an image library; file size needs nothing and separates by
-5× at its narrowest. File size is a proxy, good for "desktop or black rectangle"
-and **not** for comparing two similar framebuffers.
+**Count colors, and treat bytes as a fallback.** A color count is
+resolution-independent: one color is one color on any framebuffer. Bytes are
+not, and an earlier revision of this table proved the point by getting it wrong
+— it gave black as **9,239 bytes while claiming 1024×768**, when that figure was
+measured on a 2× guest at 2048×1536. A real black frame at 1× is 2,367 bytes.
+
+That error does not reject good frames, which is the reassuring way to misread
+it. It does something quieter: anyone taking 9,239 as the signature of failure
+and testing a 1× guest sees 2,367, matches nothing, and reads a **broken guest
+as unrecognized rather than broken**. It also understated the margin — the real
+1× separation is 2,367 to 47,023, twenty-fold, not the five-fold the old text
+claimed from two rows measured at different resolutions.
+
+So if you use bytes at all, calibrate them at the resolution they will run at,
+and say which one that is. File size remains a proxy, good for "desktop or black
+rectangle" and **not** for comparing two similar framebuffers.
 
 And assert it **after a restart**, not on the boot that granted everything —
 otherwise the check cannot tell a durable blessing from a momentary one. Content
