@@ -435,6 +435,60 @@ does nothing. Only a click on **Add Shortcut** imports it. At 1024×768 with one
 window, that button sat at about (544, 168) — but locate it by matching the
 framebuffer rather than hardcoding, because the sheet's contents vary.
 
+Measured end to end on 2026-09-17, with nobody at the guest: two signed files
+copied in over the SSH channel as base64 — 25 KB each, not worth mounting a
+share for — then `open`ed one at a time and committed by a located click at
+(543, 167), within a pixel of the figure above and found rather than assumed.
+`shortcuts list` confirmed each one landed.
+
+## Finding a button nobody can hardcode
+
+Two sheets have to be clicked to drive Shortcuts, and what works on one does not
+work on the other.
+
+**Add Shortcut is a filled blue button, and still needs care.** The sheet's icon
+tile is blue too and sits directly above it, so their rows merge into one band;
+a matcher that measures a candidate's height from that band gets 96px where the
+button is 27, and discards it. Take each box's vertical extent from its own
+columns.
+
+**The consent sheet has no default button at all.** Its three choices — Don't
+Allow, Allow Once, Always Allow — are identical flat controls, so the iOS rule
+that the affirmative is the bottom-most blue one finds *nothing* here. The
+affirmative is the right-most, and the row has to be found some other way.
+
+**Color cannot find it, because the sheet is translucent.** The same three
+buttons measured neutral 228-236 over the Shortcuts window and (214,202,206)
+over the desktop wallpaper. No fixed range covers both, and a local-average
+window wide enough to see past a button reaches past the sheet's edge and
+averages in the wallpaper. What survives both backdrops is structure: a *flat*
+horizontal run 80-240px wide sitting about 20 luminance levels below the surface
+on both sides. Both numbers are calibration, not taste — the three buttons
+measured 125px wide with 9px between them, and the step held at 20 across the
+two backdrops (232 on a 253 sheet, 207 on a 228 one) because a translucent
+button and the surface under it are tinted together. Re-measure both if the
+guest's resolution or appearance changes. Three further details, each of which
+cost a failed run:
+
+- **Sample the surface in a narrow window just outside each end**, and take the
+  brightest pixel in it. An edge is antialiased over several pixels, so a single
+  probe close in still reads the button and the step vanishes — but the buttons
+  are only 9px apart, so a probe reaching further than that reads the neighboring
+  button instead.
+- **A button's own label interrupts its rows.** Only the slices above and below
+  the text are flat all the way across, so a cluster has to bridge a text-height
+  gap or every button reads as two 7px fragments, neither tall enough to qualify.
+- **Park the pointer before capturing.** A hovered button renders differently
+  enough to drop out of the matcher, and losing one is worse than finding none:
+  with Always Allow hidden under the pointer, the right-most button found is
+  Allow Once, so the run is answered the wrong way with nothing reporting an
+  error. Measured — it happened once, and the only symptom was that a later run
+  raised a fresh prompt.
+
+**The blue matcher has a false positive worth knowing**: the selected row in the
+System Settings sidebar is a blue rounded rectangle the size of a default button.
+Anything that clicks the bottom-most blue thing will click it.
+
 ## `shortcuts run`, and consent
 
 It executes over SSH once a display and a GUI session exist. It does not fail —
@@ -448,8 +502,84 @@ answering **Always Allow** once during bake bakes them into the base. Do not let
 SSH time out while a prompt is pending: the invocation dies, and a later click
 lands on nothing while the next run raises a fresh prompt.
 
+**Killing Shortcuts is the only way back from a timed-out run.** The warning
+above is worth stating as a recovery procedure, because it was paid for twice:
+once SSH times out, the dialog on screen belongs to a dead invocation, and
+clicking its buttons does nothing at all — the framebuffer does not change and
+no error appears anywhere. `killall shortcuts Shortcuts ShortcutsViewService
+BackgroundShortcutRunner` clears it, after which a fresh run raises a fresh
+prompt that can be answered normally.
+
 `shortcuts run --output-path -` exists on macOS 27 and is the supported way to
 get a shortcut's result without the clipboard. Untested past the consent prompt.
+
+## iCloud in a guest, which is where minting stops
+
+Measured 2026-09-17 on this rig, against two Apple Accounts. The short version:
+a guest reaches the consent sheet for `CreateShortcutiCloudLinkAction` and no
+further, and the reason is never the thing the error says it is.
+
+**The action itself works.** `shortcuts run` on the publisher raised Shortcuts'
+own sheet — *Allow "Link Probe" to create iCloud link?* — took a synthesized
+Always Allow, and ran on. Nothing about being in a VM stops the action, the
+consent, or the click.
+
+**An account that has never existed on Apple hardware is refused outright.** The
+dedicated publishing account, whose only second factor was SMS to a phone
+number, took its password and its code and then failed with a server verdict
+rendered as a bare string:
+
+> ICLOUD_UNSUPPORTED_DEVICE
+
+This is not the VM being rejected. The same guest, minutes later, signed in an
+ordinary account with real trusted devices — where the second factor arrived as
+a device prompt rather than an SMS. Nor is it the clone: the base, created from
+an IPSW and never cloned, fails identically, which rules out the shared `ecid`.
+
+**An account with Advanced Data Protection signs in and never becomes usable.**
+System Settings showed it signed in, with a standing banner:
+
+> Some iCloud Data Isn't Syncing. Your end-to-end encrypted data stored in
+> iCloud can't be accessed on this device. Verify your account information to
+> resume syncing.
+
+Resume Data Sync spins for a minute and closes with nothing changed, which is
+that prohibition surfacing unlabeled — a guest carries a second standing banner
+saying it "can't be used to edit certain account information, sign in to Apple
+services, access Find My and Apple Pay", and approving a new device for
+end-to-end encrypted data is exactly that. With ADP on, every iCloud category is
+end-to-end encrypted, so the data session never becomes ready and everything
+built on CloudKit fails.
+
+**The settings pane is not evidence.** It displayed iCloud Drive **on, 128.3 GB
+used**, on a guest that had:
+
+```
+$ ls -d ~/Library/Mobile\ Documents        # no such directory
+$ ls ~/Library/Preferences/MobileMeAccounts.plist   # no such file
+$ brctl status
+brctl: self-check failed; error: Error Domain=BRCloudDocsErrorDomain Code=141 "Access denied"
+```
+
+and, in the log, `cloudd` looping on `CloudCoreInternal.SessionReadinessError
+Code=3` for a blocking account-acquisition event while `akd` re-ran
+`VMHostBAASigning` every 1.6 seconds. **Ask `brctl`, not the pane.** The pane
+reports what the account is entitled to, not what this device has.
+
+**And the error the shortcut prints is misleading.** With the account signed in
+and both iCloud Drive and Shortcuts sync on, the action still failed with:
+
+> Error: In order to do this, you must be signed into iCloud.
+
+It is signed in. What it lacks is a *ready* session. Anything debugging this
+from the shortcut's message alone will go looking in the wrong place.
+
+**What this forces on a design.** A dedicated publishing account stops being a
+preference and becomes a requirement, for a reason worth writing down: an
+operator with ADP enabled cannot mint from a guest at all, and turning ADP off
+to allow it is a bad trade. The account minting has to be one that has lived on
+real Apple hardware — which is what makes it eligible — and that does not have
+ADP enabled, which is what lets its data session become ready.
 
 ## The database is WAL
 
@@ -474,6 +604,34 @@ device. Whether a clone keeps a signed-in Apple session is **untested**.
 
 Base and clone must never run at once (identical machine identifiers), and
 Virtualization allows **two** concurrent macOS guests per host.
+
+**A serialized clone presents the base's identity, and that is measured.** In a
+clone, `akd` logged the attestation chain it was using:
+
+```
+Basic Attestation VM Sub CA1 <- Basic Attestation VM Root CA - G1
+  Not Valid Before: Tue Sep 15 22:32:26 2026
+  Not Valid After:  Thu Sep 16 22:32:26 2027
+```
+
+That `notBefore` is a 24-hour backdate of an issuance at Sep 16 22:32 — the
+minute the *base* was baked, before the clone existed. So the clone handed Apple
+a certificate issued to the base and `akd` accepted it rather than requesting its
+own. To read it in any guest:
+
+```sh
+log show --last 10m --predicate 'process == "akd"' --style compact \
+  | grep -A4 'Returning cached certificates'
+```
+
+**Concurrency is what breaks it, per Apple.** *Using iCloud with macOS Virtual
+Machines* says the framework detects a second copy started **while another is
+already running** and builds a new identity for that one, which then needs a
+human to reauthenticate before iCloud works. Serialized clones are not covered
+by that sentence and the certificate above says they inherit instead. The
+concurrent case is untested here — it needs the host to itself and a deliberate
+plan, not an opportunistic moment, because the cost of being wrong is a hand
+step in the middle of a release.
 
 ## Two hazards worth designing around
 
@@ -506,17 +664,30 @@ Written down so nobody assumes an answer. Each is cheap once a guest exists.
 4. **Does a base carrying third-party kexts or drivers behave the same?** Raised
    by the `home-platform` rehearsal work, whose bases carry SoftRAID; the bases
    measured here carry nothing third-party.
-5. **Does a clone keep a signed-in Apple Account session?** `tart clone` does not
-   regenerate the `VZMacMachineIdentifier` and Apple derives a VM's iCloud
-   identity from the host's Secure Enclave, so it plausibly does — untested.
+5. **Does a clone keep a signed-in Apple Account session?** Still untested, and
+   now for a blunter reason than before: no session has ever become ready in a
+   guest here, so there has been nothing to clone. What *is* measured is one
+   layer down — a serialized clone presents the base's attestation certificate
+   (see "Clones"), so the identity carries. Whether the session does is separate.
 6. **How do you read, and assert, that Shortcuts iCloud sync is off in a
    guest?** `bake` does not check, and it should: a synced library carries one
    clone's imports into the next clone's, which is exactly the more-than-one-copy
-   -by-name state the publisher refuses to mint from. Unknown here is how to read
-   that setting without a GUI, which is why this is a question rather than a
-   check — a sync assertion that cannot actually see the setting would report
+   -by-name state the publisher refuses to mint from. Two routes are now ruled
+   out rather than merely unknown. `MobileMeAccounts.plist` is **not written to
+   disk** in a guest whose session never became ready, so reading it answers
+   nothing, and System Settings reported iCloud Drive on with storage used on a
+   guest with no container at all — so neither the plist nor the pane can be
+   trusted. `brctl status` does report the truth about iCloud Drive; the
+   equivalent for Shortcuts specifically is still unknown, which is why this
+   stays a question. A sync assertion that cannot see the setting would report
    success without having looked, the failure shape this whole document is about.
-7. **Do setup questions survive a synthesized import?** `docs/simulator-harness.md`
+7. **Can a plain account — real hardware provenance, no ADP — reach CloudKit
+   readiness in a guest?** This is now the question that decides whether minting
+   from a guest is possible at all, and everything upstream of it is answered.
+   Neither account tested could answer it: one was refused as an unsupported
+   device before it got that far, the other had ADP and could never become ready.
+   See "iCloud in a guest".
+8. **Do setup questions survive a synthesized import?** `docs/simulator-harness.md`
    records a link that arrived with zero import questions where its siblings had
    three, the one difference being that its clicks were synthesized rather than
    human. Every import here is synthesized. An imported copy that lost its
