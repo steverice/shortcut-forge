@@ -607,9 +607,8 @@ device. Whether a clone keeps a signed-in Apple session is **untested**.
 Base and clone must never run at once (identical machine identifiers), and
 Virtualization allows **two** concurrent macOS guests per host.
 
-**A serialized clone presents an identity it did not create, and the certificate
-says when it was issued.** In a clone, `akd` logged the attestation chain it was
-using:
+**Whether a clone inherits its base's identity is unmeasured, and the obvious
+evidence for it is worthless.** A clone's `akd` logs an attestation chain:
 
 ```
 Basic Attestation VM Sub CA1 <- Basic Attestation VM Root CA - G1
@@ -617,37 +616,36 @@ Basic Attestation VM Sub CA1 <- Basic Attestation VM Root CA - G1
   Not Valid After:  Thu Sep 16 22:32:26 2027
 ```
 
-That `notBefore` is a 24-hour backdate of an issuance at Sep 16 22:32 — the
-minute the *base* was baked, before the clone existed. So the clone handed Apple
-a certificate it did not obtain, and `akd` accepted it rather than requesting its
-own. To read it in any guest:
+A `notBefore` 24 hours before the base's bake minute looks like proof the clone
+is presenting the base's certificate. It is not. **Every guest's certificate is
+backdated 24 hours from its own issuance**, measured on a second guest that was
+created from an IPSW and never cloned: its chain reads `notBefore` Sep 16
+02:36:55 against a creation at about Sep 17 02:30, a backdate from an issuance
+inside its own first boot. A clone made shortly after its base therefore has a
+freshly issued certificate dated within minutes of that bake, which is
+indistinguishable from an inherited one by timestamp alone.
+
+This claim was written three times before it was right — as measured, then as
+measured-but-narrow, then as a cache of unknown provenance — and each version
+survived review. What settled it was not closer reading of the same artifact but
+a different artifact: a guest with no clone. If a claim about lineage rests on a
+timestamp, get the control.
+
+To read the chain in any guest:
 
 ```sh
 log show --last 10m --predicate 'process == "akd"' --style compact \
   | grep -A4 'Returning cached certificates'
 ```
 
-**Two readings fit that evidence equally, and they differ in what a re-bake
-costs.** Either the certificate belongs to the *base* and the clone inherited it,
-or it belongs to *this host* and every guest on this Mac presents the same one.
-Both predict exactly what was observed, and the difference is not academic: if
-identity is host-derived, re-baking a base inherits it and costs no new Apple
-Account sign-in, and if it is base-derived, every re-baked base needs the hand
-step again — which is the occasion the mint spec's §6 is trying to confine.
-
-The distinguishing test is one fresh guest: `tart create` from the IPSW, no
-cloning, and read its cached certificate. The same Sep 16 22:32 issuance means
-host-derived; a new one at its own creation minute means base-derived. Untested
-as of 2026-09-17.
-
-**Concurrency is what breaks it, per Apple.** *Using iCloud with macOS Virtual
-Machines* says the framework detects a second copy started **while another is
-already running** and builds a new identity for that one, which then needs a
-human to reauthenticate before iCloud works. Serialized clones are not covered
-by that sentence and the certificate above says they inherit instead. The
-concurrent case is untested here — it needs the host to itself and a deliberate
-plan, not an opportunistic moment, because the cost of being wrong is a hand
-step in the middle of a release.
+**What Apple says, which is documentation rather than measurement.** *Using
+iCloud with macOS Virtual Machines* says the framework detects a second copy
+started **while another is already running** and builds a new identity for that
+one, which then needs a human to reauthenticate before iCloud works. Serialized
+copies are not covered by that sentence either way. Design as though a
+concurrent start costs a reauthentication — it is free to honor and expensive to
+discover — but do not claim the serialized case is proven, because nothing here
+proves it.
 
 ## Two hazards worth designing around
 
@@ -682,9 +680,10 @@ Written down so nobody assumes an answer. Each is cheap once a guest exists.
    measured here carry nothing third-party.
 5. **Does a clone keep a signed-in Apple Account session?** Still untested, and
    now for a blunter reason than before: no session has ever become ready in a
-   guest here, so there has been nothing to clone. What *is* measured is one
-   layer down — a serialized clone presents the base's attestation certificate
-   (see "Clones"), so the identity carries. Whether the session does is separate.
+   guest here, so there has been nothing to clone. The layer underneath is also
+   unmeasured — the attestation certificate that looked like evidence of
+   inheritance turned out to be backdated the same way in a guest that was never
+   cloned. See "Clones".
 6. **How do you read, and assert, that Shortcuts iCloud sync is off in a
    guest?** `bake` does not check, and it should: a synced library carries one
    clone's imports into the next clone's, which is exactly the more-than-one-copy
