@@ -517,14 +517,87 @@ get a shortcut's result without the clipboard. Untested past the consent prompt.
 
 ## iCloud in a guest, which is where minting stops
 
-Measured 2026-09-17 on this rig, against two Apple Accounts. The short version:
-a guest reaches the consent sheet for `CreateShortcutiCloudLinkAction` and no
-further, and the reason is never the thing the error says it is.
+Measured 2026-09-17. **A macOS 27.0 guest cannot register for Apple Push, so it
+cannot hold a usable iCloud session, so it cannot mint a link.** That is the
+whole finding. Everything else in this section is a symptom of it, and each
+symptom points somewhere other than the cause — which is why it took a day to
+reach.
 
-**The action itself works.** `shortcuts run` on the publisher raised Shortcuts'
-own sheet — *Allow "Link Probe" to create iCloud link?* — took a synthesized
-Always Allow, and ran on. Nothing about being in a VM stops the action, the
-consent, or the click.
+**The root cause: the guest cannot mint its device identity key.** `apsd` asks
+the Secure Enclave for the key that device activation needs, and the virtual SEP
+refuses:
+
+```
+<sepk:* kid=0000000000000000>: unable to generate key: error e00002e2(-536870174)
+SecKeyCreateRandomKey_ios failed: -25308 errSecInteractionNotAllowed
+  "Interaction is not allowed with the Security Server."
+(DeviceIdentity) "Failed to create reference key."
+(DeviceIdentity) "Failed to copy AVP guest identity data" -> EINVAL
+APSBAAClientIdentityProvider failed to obtain a BAA cert
+```
+
+No key means no activation, no activation means no push token, and no push token
+means no trusted-device approval can be delivered and `cloudd` can never finish
+acquiring an account. The failures start at the bake's own first boot, in a guest
+that has never been asked to authenticate to anything.
+
+**Count the successes, not the errors.** Across this guest's entire log store
+since its bake — 4,400,623 lines:
+
+| line | count |
+|---|---|
+| `attempting to fetch BAA certs` | 68 |
+| `SecKeyCreateRandomKey_ios failed` | 69 |
+| `failed to obtain a BAA cert` | 68 |
+| `obtained BAA certs` | **0** |
+| `signed nonce data with host VM identity` | **0** |
+
+It tries every time and never once succeeds. A count of error lines would only
+say the errors are frequent; the zero says the guest never reaches the line a
+working guest logs. Note the denominator too — 68 attempts across a day is not a
+busy loop, so a five-minute window on an idle guest shows zero of everything and
+looks like the fault is absent.
+
+**It is macOS 27, not this rig.** A second guest on this host, built by a
+different implementation with a different provisioning path and first-boot
+sequence, reproduces it exactly: 106 attempts, 106 failures, 0 successes, both
+zeros exact, on a comparable denominator. Independently, a Mac admin hit the same
+thing from the MDM side and published the comparison
+([Der Flounder, 2026-09-15](https://derflounder.wordpress.com/2026/09/15/enrolling-macos-golden-gate-27-0-0-virtual-machines-with-mdm-servers-does-not-work-correctly/)):
+macOS 27.0 and 26.6.2 log the *same first eight lines* and diverge at exactly one
+step, the mint. 26.6.2 logs `APSBAAClientIdentityProvider obtained BAA certs!`
+and `signed nonce data with host VM identity!`; 27.0 logs `unable to generate
+key`. His conclusion is that macOS 27.0.0 "erroneously assumes itself to be
+running on a Mac equipped with a Secure Enclave." No Apple bug number and no
+workaround exist as of 2026-09-17.
+
+Two explanations were killed rather than argued away. It is **not the clone** —
+the base fails identically, from its own first boot. And it is **not the launch
+context**: tart's FAQ names these exact errors as the symptom of
+Virtualization.framework lacking an unlocked `login.keychain`, and every VM here
+had been launched from a sandboxed agent shell, so one was started by hand from a
+Terminal in a GUI session with the keychain verified unlocked and `no-timeout`.
+Identical failure. That was the leading theory and it was wrong.
+
+**Retesting when a 27.x lands is two minutes and needs no human.** Boot a guest
+and count:
+
+```sh
+log show --last 30m --predicate 'process == "apsd"' --style compact \
+  | grep -c 'obtained BAA certs'      # any number above zero means it is fixed
+netstat -an | grep 5223               # a registered guest holds a connection here
+```
+
+**The action itself works**, which is worth keeping separate from the above.
+`shortcuts run` on the publisher raised Shortcuts' own sheet — *Allow "Link
+Probe" to create iCloud link?* — took a synthesized Always Allow, and ran on.
+Nothing about being in a VM stops the action, the consent, or the click.
+
+### The account-shaped symptoms, which are not the cause
+
+Two accounts failed two different ways before the push finding explained both.
+They are recorded because anyone debugging this without knowing about the SEP bug
+will meet them first, and each is convincing on its own terms.
 
 **An account that has never existed on Apple hardware is refused outright.** The
 dedicated publishing account, whose only second factor was SMS to a phone
@@ -533,10 +606,12 @@ rendered as a bare string:
 
 > ICLOUD_UNSUPPORTED_DEVICE
 
-This is not the VM being rejected. The same guest, minutes later, signed in an
-ordinary account with real trusted devices — where the second factor arrived as
-a device prompt rather than an SMS. Nor is it the clone: the base, created from
-an IPSW and never cloned, fails identically, which rules out the shared `ecid`.
+Signing that account into a real iPhone did not fix it — it made the guest fail
+*earlier*, at the SRP handshake with `AKAuthenticationServerError -3000076` and
+no code sent anywhere. That reversal is the push bug showing through: with no
+trusted device, Apple used the SMS path and the flow reached a code; once a
+trusted device existed, Apple preferred a push approval the guest can never
+receive.
 
 **An account with Advanced Data Protection signs in and never becomes usable.**
 System Settings showed it signed in, with a standing banner:
@@ -551,7 +626,9 @@ saying it "can't be used to edit certain account information, sign in to Apple
 services, access Find My and Apple Pay", and approving a new device for
 end-to-end encrypted data is exactly that. With ADP on, every iCloud category is
 end-to-end encrypted, so the data session never becomes ready and everything
-built on CloudKit fails.
+built on CloudKit fails. ADP is a genuine second wall — an operator with it
+enabled could not mint from a guest even on a macOS where push works — but it is
+not what stopped us, and a non-ADP account would have hit the push bug instead.
 
 **The settings pane is not evidence.** It displayed iCloud Drive **on, 128.3 GB
 used**, on a guest that had:
@@ -576,12 +653,20 @@ and both iCloud Drive and Shortcuts sync on, the action still failed with:
 It is signed in. What it lacks is a *ready* session. Anything debugging this
 from the shortcut's message alone will go looking in the wrong place.
 
-**What this forces on a design.** A dedicated publishing account stops being a
-preference and becomes a requirement, for a reason worth writing down: an
-operator with ADP enabled cannot mint from a guest at all, and turning ADP off
-to allow it is a bad trade. The account minting has to be one that has lived on
-real Apple hardware — which is what makes it eligible — and that does not have
-ADP enabled, which is what lets its data session become ready.
+**What this forces on a design.** Minting from a macOS 27 guest is not possible
+today, by anyone, with any account — so the question is which way to wait.
+A macOS 26 guest does register for push, but costs two things this project pins
+27 for: `VZMacGuestProvisioningOptions` needs 27 on **both** sides, so a 26 base
+cannot be provisioned headlessly and Setup Assistant becomes a hand step per
+base; and 27-only actions would be imported into a 26 library, which is
+unmeasured and is exactly the silent-corruption class this document exists to
+catalog. Minting on real hardware remains the other option, with the
+contamination hazard the README describes.
+
+The account requirements still hold for whenever the guest half works, and are
+worth settling in advance because they are slow to fix: the minting account must
+have lived on real Apple hardware, which is what makes it eligible, and must not
+have ADP enabled, which is what would let its data session become ready.
 
 ## The database is WAL
 
