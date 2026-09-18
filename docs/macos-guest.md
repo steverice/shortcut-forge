@@ -515,13 +515,51 @@ stuck.
 `shortcuts run --output-path -` exists on macOS 27 and is the supported way to
 get a shortcut's result without the clipboard. Untested past the consent prompt.
 
-## iCloud in a guest, which is where minting stops
+## iCloud in a guest: it works on 26, and cannot work on 27
 
-Measured 2026-09-17. **A macOS 27.0 guest cannot register for Apple Push, so it
-cannot hold a usable iCloud session, so it cannot mint a link.** That is the
-whole finding. Everything else in this section is a symptom of it, and each
-symptom points somewhere other than the cause — which is why it took a day to
-reach.
+Measured 2026-09-17. **Minting works end to end on a macOS 26.6.2 guest.** The
+same rig on macOS 27.0 cannot register for Apple Push, so it cannot hold a usable
+iCloud session, so it cannot mint a link — and every symptom of that points
+somewhere other than the cause, which is why it took a day to reach.
+
+**The end-to-end result, on 26.6.2.** The publishing Apple Account signed in;
+`brctl status` reported 24 containers syncing with `has-synced-down` and
+timestamps a minute old; the three real release builds imported; and the real
+publisher, run over SSH, minted three live links:
+
+```
+$ shortcuts run "Brightwheel Share Links"       # exit 0
+Copied three links. Now run: uv run python tools/verify_links.py --clipboard --erase
+
+$ pbpaste
+<li><a href="https://www.icloud.com/shortcuts/…">Brightwheel Attendance</a></li>
+<li><a href="https://www.icloud.com/shortcuts/…">Brightwheel Check In</a></li>
+<li><a href="https://www.icloud.com/shortcuts/…">Brightwheel Check Out</a></li>
+```
+
+Three things fall out of that transcript, each of which had been an open
+question. **`pbpaste` over SSH does reach the guest's pasteboard.** **`shortcuts
+run` exits 0 and prints the Show Result text on stdout**, so a shortcut's own
+message is readable without the clipboard at all. And the consent sheet needed
+answering by hand only because this guest had no Screen Sharing; the blessing
+would have let the framebuffer matcher do it.
+
+**A 27-built shortcut survives a 26 library.** This was the risk that pinned the
+guest to macOS 27 — the Brightwheel shortcuts need Store Content and the live
+`Scan Code`, and an action silently dropped on import is the corruption class
+this document exists to catalog. Measured by importing the real signed builds and
+diffing the guest's own library database against `dist/*.xml`, the same
+comparison `sim.links.check_link` makes on a simulator:
+
+| shortcut | actions built → installed | import questions built → installed |
+|---|---|---|
+| Brightwheel Attendance | 317 → 317 | 3 → 3 |
+| Brightwheel Check In | 17 → 17 | 0 → 0 |
+| Brightwheel Check Out | 17 → 17 | 0 → 0 |
+
+Every identifier in order, and the questions intact. These imports were committed
+by a human click; whether a *synthesized* click preserves questions is still
+open question 8.
 
 **The root cause: the guest cannot mint its device identity key.** `apsd` asks
 the Secure Enclave for the key that device activation needs, and the virtual SEP
@@ -634,19 +672,21 @@ Two accounts failed two different ways before the push finding explained both.
 They are recorded because anyone debugging this without knowing about the SEP bug
 will meet them first, and each is convincing on its own terms.
 
-**An account that has never existed on Apple hardware is refused outright.** The
-dedicated publishing account, whose only second factor was SMS to a phone
-number, took its password and its code and then failed with a server verdict
-rendered as a bare string:
+**`ICLOUD_UNSUPPORTED_DEVICE` reads like a verdict on the account. It is a
+verdict on the device.** The dedicated publishing account, whose only second
+factor was SMS to a phone number, took its password and its code on a 27 guest
+and then failed with that bare string — which looks exactly like Apple refusing
+an account that has never lived on Apple hardware. The same account later signed
+in **without trouble on the 26.6.2 guest**, where an SMS code was accepted just
+as readily. Nothing about the account's eligibility was the problem; the 27
+guest's broken device identity was.
 
-> ICLOUD_UNSUPPORTED_DEVICE
-
-Signing that account into a real iPhone did not fix it — it made the guest fail
-*earlier*, at the SRP handshake with `AKAuthenticationServerError -3000076` and
-no code sent anywhere. That reversal is the push bug showing through: with no
-trusted device, Apple used the SMS path and the flow reached a code; once a
-trusted device existed, Apple preferred a push approval the guest can never
-receive.
+Signing that account into a real iPhone did not fix the 27 guest either — it made
+it fail *earlier*, at the SRP handshake with `AKAuthenticationServerError
+-3000076` and no code sent anywhere. That reversal is the push bug showing
+through: with no trusted device, Apple used the SMS path and the flow reached a
+code; once a trusted device existed, Apple preferred a push approval the guest
+can never receive.
 
 **An account with Advanced Data Protection signs in and never becomes usable.**
 System Settings showed it signed in, with a standing banner:
@@ -688,20 +728,22 @@ and both iCloud Drive and Shortcuts sync on, the action still failed with:
 It is signed in. What it lacks is a *ready* session. Anything debugging this
 from the shortcut's message alone will go looking in the wrong place.
 
-**What this forces on a design.** Minting from a macOS 27 guest is not possible
-today, by anyone, with any account — so the question is which way to wait.
-A macOS 26 guest does register for push, but costs two things this project pins
-27 for: `VZMacGuestProvisioningOptions` needs 27 on **both** sides, so a 26 base
-cannot be provisioned headlessly and Setup Assistant becomes a hand step per
-base; and 27-only actions would be imported into a 26 library, which is
-unmeasured and is exactly the silent-corruption class this document exists to
-catalog. Minting on real hardware remains the other option, with the
-contamination hazard the README describes.
+**What this forces on a design.** Mint on **macOS 26** until Apple fixes 27.
+Minting from a 27 guest is not possible today, by anyone, with any account, and
+the one cost of dropping to 26 that cannot be worked around is provisioning:
+`VZMacGuestProvisioningOptions` needs 27 on **both** sides, so a 26 base boots
+into Setup Assistant and needs a human once per base. Everything else survives —
+the imports are lossless, the account signs in, the session becomes ready, and
+the links mint. The other cost that was feared, 27-only actions landing in a 26
+library, was measured and does not materialize.
 
-The account requirements still hold for whenever the guest half works, and are
-worth settling in advance because they are slow to fix: the minting account must
-have lived on real Apple hardware, which is what makes it eligible, and must not
-have ADP enabled, which is what would let its data session become ready.
+One account requirement does still hold, because it is a second wall rather than
+a symptom: **the minting account must not have Advanced Data Protection
+enabled.** With ADP every iCloud category is end-to-end encrypted and a new
+device needs approving from an existing one, which a guest is forbidden to do, so
+its data session never becomes ready no matter which macOS the guest runs. An
+operator with ADP on cannot mint from a guest at all, which is the strongest
+argument for a dedicated publishing account.
 
 ## The database is WAL
 
