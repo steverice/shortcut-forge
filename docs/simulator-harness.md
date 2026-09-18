@@ -123,7 +123,8 @@ occlusion, and no pointer takeover:
 
 ```sh
 idb ui tap X Y          # device points, not screen points
-idb ui describe-all     # every on-screen element, with bounds and a11y info
+idb ui describe-all     # the frontmost app's elements, with bounds and a11y info
+idb ui describe-point X Y   # whatever is under a point, in any process
 ```
 
 That deletes rather than ports most of this file's hard-won machinery — the
@@ -132,9 +133,9 @@ pixel matching, the HiDPI click loss, the hovered-button dropout. Finding *Add
 Shortcut* becomes a lookup by label. Apple's own direction agrees: Xcode 27
 points automation at `devicectl` and `simctl` rather than at GUI scripting.
 
-Unverified before committing to it: idb states macOS 15+/Xcode 26+ and nobody
-here has run it on 27, it needs a companion daemon and a Python client, and its
-accessibility operations are simulator-only.
+It has since been run on 27, and it works, with one limit that decides how the
+rebuild has to find buttons. The measurements are in the next section and the
+rebuild notes in the one after.
 
 **And idb does not replace the macOS guest.** The guest exists to *be a device* —
 a real identity with a working iCloud session and an isolated library — which is
@@ -145,6 +146,117 @@ useless (`docs/macos-guest.md`). idb drives a screen; it does not confer a
 CloudKit session. There is also no `shortcuts` CLI on iOS, so a simulator would
 mean driving the app's UI to run a publisher and scraping the result, where the
 guest answers over SSH.
+
+### idb on Xcode 27, measured
+
+Measured 2026-09-18: Xcode 27.0 (27A266a) on macOS 27.0, an iPhone 17 Pro
+simulator on iOS 27.0, idb 1.6.0, and Device Hub not running at any point.
+Install is `brew trust facebook/fb` and then `brew install facebook/fb/idb`;
+Homebrew refuses the formula from an untrusted tap. 1.6.0, released 2026-09-17,
+already looks for SimulatorKit under `Contents/SharedFrameworks`, where Xcode 27
+moved it, so the patched companions circulating for the old path are not
+needed.
+
+| | |
+|---|---|
+| open a signed `.shortcut` as a host file URL, tap *Add Shortcut* at the frame `describe-all` gave | installed; the row appeared in `Shortcuts.sqlite` |
+| *Set Up Shortcut*, then *Skip Setup*, then the Replace / Keep Both / Cancel alert | every button labeled, every tap landed |
+| `shortcuts://run-shortcut`, Ask for Input, `idb ui text`, *Done*, *Allow* on the clipboard consent | the typed digits came back from `simctl pbpaste` |
+| `idb ui text "Wi-Fi 123"` into a search field | arrived verbatim: no keycode table, no autocapitalization |
+| `idb ui button HOME` | works |
+| `idb screenshot` | "Failed to capture a screenshot" with no GUI attached; `simctl io … screenshot` works |
+
+Frames from `describe-all`, the point given to `idb ui tap`, and a `simctl io
+screenshot` share one coordinate space: device points, 3 px per point on this
+device. Nothing is mapped and nothing is measured.
+
+**Tree queries see only the frontmost app.** `describe-all`, `describe MARKER`,
+`wait MARKER`, a tap by marker, `--match`, both backends (`--api ax` and
+`--api axbridge`), and the `modal` field of `--format complete` all walk the
+frontmost application and stop; the gRPC request has no process field
+(`AccessibilityInfoRequest` carries a point, a marker, a backend and filters,
+nothing else). Shortcuts draws its import sheet, the Replace alert and the
+"Could not connect to the server" error in its own process, so those are in the
+tree. It runs shortcuts out of process, and `com.apple.ShortcutsUI` draws the
+Ask for Input dialog, the "Allow … to copy to the clipboard?" alert and the
+"Allow … to output 1 text item?" sheet. While one of those is up, every tree
+query still returns the library underneath it, `wait Done` times out, and
+`--format complete` reports `modal: null`. `describe-point X Y` is a
+system-wide hit test and does see them: it returned the `TextArea` with its
+`AXValue`, and *Done*, *Cancel*, *Allow* and *Always Allow* as labeled buttons
+with frames, at about 0.2 s a call. Touches and typed text reach them too.
+
+`--api axbridge` is worth using for the frontmost app: on the library screen it
+returned 80 elements to the default backend's 8, including the navigation bar
+and each tile's Play button, which the default backend drops.
+
+**Quitting Device Hub shuts down every booted simulator**, as quitting
+Simulator.app did. A harness boots with `simctl boot` and never launches Device
+Hub. `boot()` in `sim/harness.py` still calls `host().launch()`, which opens it;
+that call goes. A person running Device Hub alongside does no harm, and idb's
+touches do not care whether a window is showing the device.
+
+**The output-permission sheet.** A run started by URL ends with "Allow … to
+output 1 text item?" (Don't Allow / Allow Once / Always Allow), because the URL
+runner hands the last action's output back to its caller. Left pending, the
+next run request logs a start and a finish two seconds apart and shows no
+dialog — from outside, exactly what a dropped run URL looks like, and three
+"dropped" runs in a row here were this. *Always Allow* clears it for the
+device's lifetime, like the other consents. Do not choose *Allow Once*; it asks
+again on the next run.
+
+Seen once in three imports: after *Add Shortcut*, Shortcuts opened the new
+shortcut's Apple Intelligence description view ("Preparing support for describe
+a shortcut") instead of returning to the library. The install had landed either
+way, so nothing after an install may assume the library is what is on screen.
+
+After a companion is killed by hand, every command fails on a missing socket
+until `idb kill` resets the client's registry; the next command then spawns a
+fresh companion.
+
+### The rebuild, when it happens
+
+Link verification no longer needs a device: fetching the link's payload from
+iCloud and diffing it against `dist/<name>.xml` cannot be fooled by a tap that
+landed wrong, so that is the route for links. The harness is rebuilt only for
+the three flows a device still uniquely exercises, and only when those tests
+are wanted again.
+
+**Input.** Poll `describe-point` at the field's region until a `TextArea`
+answers (about 2 s after the run URL). Type with `idb ui text`. Read the same
+point back and require its `AXValue` to equal what was typed, which is the
+check the old harness never had. Tap *Done* at the frame the hit test returned.
+Here the field sat at (23, 123) 356×114 and Done at (207, 252) 172×54; treat
+those as places to start a sweep, not constants. Done and Cancel are
+distinguishable by label, which retires the trap where the blue-button rule
+submitted an empty answer.
+
+**Consent.** Two kinds, found two ways. In-app alerts (Replace / Keep Both, run
+errors) are in the frontmost tree: `describe-all --match Allow`, or by label.
+Runner consents (clipboard, network, output) are not: sweep `describe-point`
+down the sheet's region, dedupe by frame, and tap the button labeled *Allow* or
+*Always Allow*. Clear the output-permission sheet after every URL-started run,
+or the next run does nothing and says nothing.
+
+**Questions.** All in the frontmost tree. *Add Shortcut*, *Set Up Shortcut*,
+*Next*, *Skip Setup*, each question's heading text, and the Replace alert were
+all present by label. Whether a link's sheet offers *Set Up Shortcut* becomes a
+label check rather than a count of blue rectangles, and `links.install_from_link`
+keeps its retry and swaps only the finder.
+
+**What survives in `sim/harness.py`.** Dead: both `_Host` classes,
+`_detect_host`, `_mouse_click`, `_type_mac`, `_press_escape`, `_title_is`,
+`_screen_box`, `_widest_gap`, `KEYCODES`, `window_rect`, `focus_window`,
+`prepare_window`, `menu_item`, `menu_click`, `ensure_hardware_keyboard`,
+`_mapping`, and the Quartz and numpy imports — about half the file. Unchanged:
+`find`, `boot` (minus the launch), `wait_booted`, `erase`, `add_root_cert`,
+`terminate_shortcuts`, `run_shortcut`, `screenshot`, `image`, `db_path`,
+`library`, `shortcut_actions`, `stored_content`, and the plist helpers.
+Changing shape: `tap` takes points; `type_text` is one call; `blue_buttons` and
+`tap_affirmative` become one label lookup with the two-tier search above, and
+`answer_prompt` and `cancel_prompt` collapse into it; `install` keeps its retry
+loop and swaps the finder. A consumer suite that calls `blue_buttons` or
+`image` directly needs the same swap.
 
 ## What had to be worked out
 
