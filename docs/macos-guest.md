@@ -886,6 +886,77 @@ downloads and caches it, so `ipsw` is not a required tool. Check free space
 immediately before a restore rather than during one: on a volume near capacity,
 running out mid-restore costs both the download and the guest.
 
+## Preparing a 26 base by hand
+
+Measured 2026-09-18 while getting a hand-provisioned macOS 26.6.2 base ready to
+clone for a release. Nobody touched the screen at any point; every step ran
+over SSH or VNC from the host, and every claim below was read back rather than
+assumed. Eight things, in the order they were hit.
+
+**A hand-provisioned base has no Screen Sharing and no blessing.** Nothing
+listened on 5900, `launchctl print system/com.apple.screensharing` said "Could
+not find service", and the system TCC store had no screen-sharing rows. `bake()`
+cannot run on 26 (provisioning needs 27 on both sides), so a 26 base gets
+`bake.sharing_script` and the TCC write applied by hand, and the 09-17 consent
+was answered by a person for exactly this reason.
+
+**`bless.tcc_rows()` cannot be written as-is on macOS 26.** The insert fails
+with "table access has no column named one_time_reprompt_eligible". 26's
+`access` table has `service, client, client_type, auth_value, auth_reason,
+auth_version, csreq, policy_id, indirect_object_identifier_type,
+indirect_object_identifier, indirect_object_code_identity, flags,
+last_modified, pid, pid_version, boot_uuid, last_reminded` — neither
+`one_time_reprompt_eligible` nor `reminder_count`. The failed `executemany`
+rolled back and wrote nothing. Writing the two rows with only the columns
+present, and refusing to drop any column whose value is non-zero, gave both
+rows `auth_value` 2; after a reboot the screen rendered (41,058 distinct colors)
+and clicks landed. The fix for `bless` is to build the insert from
+`PRAGMA table_info(access)` with that same refusal rule.
+
+**`write_blessing()`'s scale step would also fail on this guest**, after the TCC
+rows were committed: `:DisplayAnyUserSets:Configs:0:DisplayConfig:0:CurrentInfo:Scale`
+does not exist in its displays plist, so `PlistBuddy Set` errors, which is the
+half-applied state that function's docstring warns about. This guest already
+runs at 1024x768 with `backingScaleFactor` 1 and does not need the step. Skip
+the scale when the key is absent, and check `backingScaleFactor` over SSH
+afterward instead.
+
+**Auto-login via `/etc/kcpassword` works on the base.** The password XORed with
+the bytes `7D 89 52 23 D2 BC DD EA A3 B9 1F`, zero-padded to the next multiple
+of 12 (a 6-character password gives 12 bytes), written `root:wheel` `0600`, plus
+`defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser
+<user>`. After a clean in-guest shutdown and boot, `/dev/console` is owned by
+that user.
+
+**Boot with `CI=true tart run <name> --vnc`, not `--no-graphics`.** The flag
+section above already says why: `--no-graphics` removes the display, and a
+guest without one reports the same "Couldn't communicate with a helper
+application" from `shortcuts` as a guest nobody has logged into. A base booted
+that way to read its library looked, from SSH, exactly like the auto-login
+problem.
+
+**Three VNC input quirks on this guest, each measured:**
+
+- After about 30 seconds of no VNC activity, **the first click is dropped.**
+  Alternating sidebar clicks landed 5 of 6, the miss being the first. A 1-second
+  warm-up move did not fix it (3 of 4, again the first). Warm-up moves with a
+  3.5-second pause did, 2 of 2 after 75 seconds idle. What earlier looked like
+  "menus do not work" was mostly this.
+- **Clicking a context-menu item does nothing**, even when the hover has
+  visibly highlighted it. Hover the item and press Return.
+- Deleting a shortcut takes a click on the red Delete button of a confirmation
+  that names the shortcut ("Delete shortcut “<name>”?"); assert on the
+  name before confirming. The grid reflows after each delete, so every target
+  in turn sat at the same spot.
+
+**Shortcuts iCloud Sync was on in the base, and it has to be off.** The delete
+sheet said the shortcut would be deleted from every iCloud device, and Settings
+showed the toggle on. With sync on, a clone's imports sync back into the base on
+its next boot, which breaks the rule that a base holds only the publisher. It was
+turned off in the base (Settings > General > iCloud Sync). Whether a guest mints
+with sync off is what the v1.5.0 run measures; the operator's Mac minted two
+earlier releases with it off.
+
 ## Open questions
 
 Written down so nobody assumes an answer. Each is cheap once a guest exists.
@@ -910,11 +981,17 @@ Written down so nobody assumes an answer. Each is cheap once a guest exists.
    near it are still open: whether a clone *inherits* its base's identity, which
    the attestation certificate cannot show either way, and whether any of this
    holds on a 27 guest, where no session exists to clone.
-6. **How do you read, and assert, that Shortcuts iCloud sync is off in a
-   guest?** `bake` does not check, and it should: a synced library carries one
-   clone's imports into the next clone's, which is exactly the more-than-one-copy
-   -by-name state the publisher refuses to mint from. Two routes are now ruled
-   out rather than merely unknown. `MobileMeAccounts.plist` is **not written to
+6. ~~**How do you read, and assert, that Shortcuts iCloud sync is off in a
+   guest?**~~ **Answered 2026-09-18.** It is readable with no GUI:
+   `~/Library/Group Containers/group.is.workflow.my.app/Library/Preferences/group.is.workflow.my.app.plist`,
+   key `WFCloudKitSyncEnabled`. It read `false` right after the toggle was
+   turned off in the guest, and reads `0` on a host Mac where sync has been off
+   since 2026-09-11. Its value *before* the toggle was not read, so what "on"
+   looks like — `1`, or the key absent — is not measured: assert `== 0` or
+   `false`, never `!= 1`. The reason it mattered stands: a synced library
+   carries one clone's imports into the next clone's, which is exactly the
+   more-than-one-copy-by-name state the publisher refuses to mint from. Two
+   routes had been ruled out before this one was found. `MobileMeAccounts.plist` is **not written to
    disk** in a guest whose session never became ready, so reading it answers
    nothing, and System Settings reported iCloud Drive on with storage used on a
    guest with no container at all — so neither the plist nor the pane can be
