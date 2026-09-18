@@ -1,8 +1,9 @@
 """The share-links shortcut: nothing stored that can go stale, nothing minted until every check passes.
 
 Moved from brightwheel-checkin, where the three targets were fixed. The
-baseline fixture is that project's build from before the move, and the
-structure here must match it action for action.
+baseline fixture is that project's real build, regenerated on 2026-09-18 when
+the closing Show Result became a notification, and the structure here must
+match it action for action.
 """
 
 from __future__ import annotations
@@ -12,7 +13,12 @@ import re
 
 import pytest
 
-from shortcut_forge_lib.publisher import ICLOUD_LINK_ACTION, share_links_shortcut
+from shortcut_forge_lib.publisher import (
+    DEFAULT_LINE_FORMAT,
+    ICLOUD_LINK_ACTION,
+    links_from_markup,
+    share_links_shortcut,
+)
 
 TARGETS = ["Brightwheel Attendance", "Brightwheel Check In", "Brightwheel Check Out"]
 REPEAT = "is.workflow.actions.repeat.each"
@@ -57,10 +63,9 @@ def test_non_comment_parameters_match_the_baseline_build(publisher_baseline):
         return out
 
     ours, theirs = strip(actions()), strip(publisher_baseline["WFWorkflowActions"])
-    # The closing message was project-specific and is now a parameter.
-    ours = [o for o in ours if o[0] != "is.workflow.actions.showresult"]
-    theirs = [t for t in theirs if t[0] != "is.workflow.actions.showresult"]
-    assert ours == theirs
+    # The closing notification's body is the consumer's `done_message`.
+    assert ours[-1][0] == theirs[-1][0] == "is.workflow.actions.notification"
+    assert ours[:-1] == theirs[:-1]
 
 
 def test_target_names_need_no_regex_escaping():
@@ -122,7 +127,8 @@ def test_more_than_one_explains_the_copy_you_cannot_see():
             "string"
         ]
         for a in actions()
-        if ident(a) == "is.workflow.actions.notification"
+        # The refusals carry a title; the closing notification is a body alone.
+        if ident(a) == "is.workflow.actions.notification" and "WFNotificationActionTitle" in params(a)
     }
     for t in TARGETS:
         assert "Replace" in notes[f"More than one {t}"]
@@ -143,10 +149,51 @@ def test_clipboard_gets_the_rendered_lines_in_order():
     assert len(positions(acts, "is.workflow.actions.setclipboard")) == 1
 
 
-def test_done_message_is_shown_last():
+def test_done_message_is_a_notification_not_a_sheet():
+    # Show Result holds `shortcuts run` open behind a Done sheet on every run.
     acts = share_links_shortcut("P", ["A"], done_message="Now verify.")["WFWorkflowActions"]
-    assert ident(acts[-1]) == "is.workflow.actions.showresult"
-    assert params(acts[-1])["Text"]["Value"]["string"] == "Now verify."
+    assert ident(acts[-1]) == "is.workflow.actions.notification"
+    assert params(acts[-1])["WFNotificationActionBody"]["Value"]["string"] == "Now verify."
+    assert not positions(acts, "is.workflow.actions.showresult")
+
+
+def rendered(links: dict[str, str], line_format: str = DEFAULT_LINE_FORMAT) -> str:
+    """What the shortcut puts on the clipboard, rendered the way its Markup text does."""
+    return "".join(line_format.format(name=name, link=link) for name, link in links.items())
+
+
+LINKS = {t: f"https://www.icloud.com/shortcuts/{n:032x}" for n, t in enumerate(TARGETS, start=1)}
+
+
+def test_links_read_back_from_what_was_rendered():
+    assert links_from_markup(rendered(LINKS), TARGETS) == LINKS
+
+
+def test_links_are_read_by_name_not_position():
+    reordered = dict(reversed(list(LINKS.items())))
+
+    assert links_from_markup(rendered(reordered), TARGETS) == LINKS
+
+
+def test_a_missing_line_leaves_that_name_out():
+    partial = {t: LINKS[t] for t in TARGETS[:2]}
+
+    assert links_from_markup(rendered(partial), TARGETS) == partial
+
+
+def test_a_dropped_trailing_newline_still_reads():
+    assert links_from_markup(rendered(LINKS).rstrip(), TARGETS) == LINKS
+
+
+def test_a_custom_line_format_reads_back_through_the_same_format():
+    fmt = "{name}: {link}\n"
+
+    assert links_from_markup(rendered(LINKS, fmt), TARGETS, fmt) == LINKS
+
+
+def test_a_name_that_only_prefixes_another_is_not_matched():
+    # "Brightwheel Check" must not read Check In's line.
+    assert links_from_markup(rendered(LINKS), ["Brightwheel Check"]) == {}
 
 
 def test_it_asks_no_setup_questions():

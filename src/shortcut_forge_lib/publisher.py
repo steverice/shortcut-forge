@@ -7,7 +7,15 @@ shortcut, and `run` is all it takes to drive one:
 
     shortcuts run "<name>"
 
-It exits 0 with every link on the clipboard, rendered through `line_format`.
+It exits 0 with every link on the clipboard, rendered through `line_format`,
+and `links_from_markup()` reads them back by name. It ends on a notification,
+not Show Result: on macOS, Show Result holds `shortcuts run` open behind a
+Cancel / Done sheet on every run, even with every permission granted, which a
+headless mint cannot click (measured in a macOS 26.6.2 guest on 2026-09-18 —
+a notification probe returned in under a second where the Show Result one was
+still waiting after 30). A fresh import asks once each to copy to the
+clipboard, create iCloud links, and show notifications; each prompt blocks the
+run until answered, and none asks again once allowed.
 
 The shortcut finds each target by name every time it runs rather than through
 a picker. A picker stores a workflow identifier, publishing a new build mints
@@ -23,6 +31,7 @@ it under that name.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from shortcut_forge_lib.actions import GREATER_THAN, ActionList
@@ -58,8 +67,8 @@ def share_links_shortcut(
 
     `line_format` renders each link; `{name}` and `{link}` are the two fields,
     and the results are concatenated onto the clipboard in `targets` order.
-    Target names must be letters and spaces only: they are interpolated into
-    match patterns raw.
+    `done_message` is the closing notification's body. Target names must be
+    letters and spaces only: they are interpolated into match patterns raw.
     """
     for target in targets:
         if not all(c.isalpha() or c == " " for c in target):
@@ -178,6 +187,32 @@ def share_links_shortcut(
     )
     u_mk = a.text(ts(*parts), name="Markup")
     a.add("is.workflow.actions.setclipboard", WFInput=attach(out(u_mk, "Markup")))
-    a.add("is.workflow.actions.showresult", Text=ts(done_message))
+    a.notify(body=ts(done_message))
 
     return document(name, a, glyph=glyph, color=color, input_classes=[])
+
+
+def _flexible(text: str) -> str:
+    """`text` as a pattern in which any run of whitespace may be any run, or none."""
+    return r"\s*".join(re.escape(part) for part in re.split(r"\s+", text))
+
+
+def links_from_markup(text: str, targets: list[str], line_format: str = DEFAULT_LINE_FORMAT) -> dict[str, str]:
+    """The link for each target in `text`, read back through the same `line_format` that rendered it.
+
+    By name, never by position, so a reordered or partial paste leaves a name
+    missing rather than swapping two links. Whitespace in the format is
+    matched loosely, since a clipboard round trip can drop a trailing newline.
+    A target with no line is absent from the result; refusing that is the
+    caller's decision.
+    """
+    found = {}
+    for target in targets:
+        before, _, after = line_format.partition("{link}")
+        pattern = (
+            _flexible(before.format(name=target)) + r"(?P<link>[^\s\"'<>]+)" + _flexible(after.format(name=target))
+        )
+        match = re.search(pattern, text)
+        if match:
+            found[target] = match.group("link")
+    return found

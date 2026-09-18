@@ -11,11 +11,11 @@
 			<dict>
 				<key>WFCommentActionText</key>
 				<string>--- WHAT THIS IS ---
-Mints a fresh iCloud link for each of the three Brightwheel shortcuts and copies them to the clipboard as the markup docs/index.html wants.
+Mints a fresh iCloud link for each of 3 shortcuts and copies them to the clipboard.
 
 It finds each one by name every time it runs, so a fresh import is simply found again. Nothing needs picking, and nothing goes stale between releases.
 
-Each link asks you to confirm: three taps, once per release. If anything about the library is wrong it stops before the first one.</string>
+Each link asks you to confirm. If anything about the library is wrong it stops before the first one.</string>
 			</dict>
 		</dict>
 		<dict>
@@ -26,7 +26,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 				<key>CustomOutputName</key>
 				<string>My Shortcuts</string>
 				<key>UUID</key>
-				<string>A0D482B2-5A75-42D5-8EC9-2E505AD75B42</string>
+				<string>DF99EAA3-6695-44D3-82FE-7C3D1A0115C6</string>
 			</dict>
 		</dict>
 		<dict>
@@ -37,7 +37,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 				<key>CustomOutputName</key>
 				<string>Library Names</string>
 				<key>UUID</key>
-				<string>031D4F3D-0133-43F4-A579-95B05EE4098D</string>
+				<string>B04F443A-1823-4198-A499-A7C6B097FCFE</string>
 				<key>WFTextActionText</key>
 				<dict>
 					<key>Value</key>
@@ -49,7 +49,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 								<key>OutputName</key>
 								<string>My Shortcuts</string>
 								<key>OutputUUID</key>
-								<string>A0D482B2-5A75-42D5-8EC9-2E505AD75B42</string>
+								<string>DF99EAA3-6695-44D3-82FE-7C3D1A0115C6</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -68,7 +68,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>18D9DA89-03B5-42CB-B363-6948D398AD31</string>
+				<string>6C472DA1-F79B-41AC-ABAB-0FC22165EDE0</string>
 				<key>WFNumberActionNumber</key>
 				<string>1</string>
 			</dict>
@@ -79,7 +79,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>F4881680-5833-48C5-A90A-1D363D140A41</string>
+				<string>022AE0D8-24A3-497E-A732-B02BE90C84DA</string>
 				<key>WFMatchTextPattern</key>
 				<string>(?m)^Brightwheel Attendance( \d+)?$</string>
 				<key>text</key>
@@ -93,7 +93,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 								<key>OutputName</key>
 								<string>Library Names</string>
 								<key>OutputUUID</key>
-								<string>031D4F3D-0133-43F4-A579-95B05EE4098D</string>
+								<string>B04F443A-1823-4198-A499-A7C6B097FCFE</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -118,7 +118,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>F4881680-5833-48C5-A90A-1D363D140A41</string>
+						<string>022AE0D8-24A3-497E-A732-B02BE90C84DA</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -126,7 +126,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 					<string>WFTextTokenAttachment</string>
 				</dict>
 				<key>UUID</key>
-				<string>8D0CBE10-0C05-413D-A280-21F55AB5F9F7</string>
+				<string>AF61D4F9-B23B-4A33-B64C-B6D03EAFE0AB</string>
 				<key>WFCountType</key>
 				<string>Items</string>
 				<key>WFInput</key>
@@ -136,7 +136,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>F4881680-5833-48C5-A90A-1D363D140A41</string>
+						<string>022AE0D8-24A3-497E-A732-B02BE90C84DA</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -163,9 +163,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>9FE4BAEF-BF94-4E2B-AFAC-B85B79628445</string>
+				<string>9B68CF32-2D94-40FF-A39E-D9C3F9ECCC35</string>
 				<key>UUID</key>
-				<string>D30A1EF1-FA73-44BA-810F-0DCE7C77BA76</string>
+				<string>7C8AC5CA-C9C4-4232-8EDC-E6547A4CD687</string>
 				<key>WFCondition</key>
 				<integer>2</integer>
 				<key>WFControlFlowMode</key>
@@ -181,7 +181,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 							<key>OutputName</key>
 							<string>Count</string>
 							<key>OutputUUID</key>
-							<string>8D0CBE10-0C05-413D-A280-21F55AB5F9F7</string>
+							<string>AF61D4F9-B23B-4A33-B64C-B6D03EAFE0AB</string>
 							<key>Type</key>
 							<string>ActionOutput</string>
 						</dict>
@@ -236,9 +236,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>9FE4BAEF-BF94-4E2B-AFAC-B85B79628445</string>
+				<string>9B68CF32-2D94-40FF-A39E-D9C3F9ECCC35</string>
 				<key>UUID</key>
-				<string>DFA7889C-CD48-49F8-A6F7-49558457211B</string>
+				<string>F92D3679-964E-4948-8B6A-1D2E3A9AA199</string>
 				<key>WFControlFlowMode</key>
 				<integer>2</integer>
 			</dict>
@@ -249,7 +249,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>D857A1F3-93CC-4211-B89C-EC7E9DE7E009</string>
+				<string>1E238C5C-6D04-46C0-93E6-A90EA7549E49</string>
 				<key>WFMatchTextPattern</key>
 				<string>(?m)^Brightwheel Attendance \d+$</string>
 				<key>text</key>
@@ -263,7 +263,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 								<key>OutputName</key>
 								<string>Library Names</string>
 								<key>OutputUUID</key>
-								<string>031D4F3D-0133-43F4-A579-95B05EE4098D</string>
+								<string>B04F443A-1823-4198-A499-A7C6B097FCFE</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -288,7 +288,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>D857A1F3-93CC-4211-B89C-EC7E9DE7E009</string>
+						<string>1E238C5C-6D04-46C0-93E6-A90EA7549E49</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -296,7 +296,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 					<string>WFTextTokenAttachment</string>
 				</dict>
 				<key>UUID</key>
-				<string>18191C15-4282-4B2C-B802-745D97331D01</string>
+				<string>9B1427DF-B025-4759-B771-B6DE9AEE8D7E</string>
 				<key>WFCountType</key>
 				<string>Items</string>
 				<key>WFInput</key>
@@ -306,7 +306,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>D857A1F3-93CC-4211-B89C-EC7E9DE7E009</string>
+						<string>1E238C5C-6D04-46C0-93E6-A90EA7549E49</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -323,7 +323,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 				<key>WFCommentActionText</key>
 				<string>Stop if the only copy has a number after its name.
 - Condition counts copies named Brightwheel Attendance followed by a number
-- It would be shared under that name, and the wrappers call Brightwheel Attendance by its exact name</string>
+- It would be shared under that name, and anything calling Brightwheel Attendance calls it by its exact name</string>
 			</dict>
 		</dict>
 		<dict>
@@ -332,9 +332,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>F4FC65B6-FEE4-431E-8D4D-5CD7372F064F</string>
+				<string>CF1F6E14-498B-4C9D-AA85-6B662AFAD389</string>
 				<key>UUID</key>
-				<string>8E383BAD-34E9-4BE1-A76C-12213B23C773</string>
+				<string>43A9E87E-36B0-41B6-9F0A-40460B94BA4F</string>
 				<key>WFCondition</key>
 				<integer>2</integer>
 				<key>WFControlFlowMode</key>
@@ -350,7 +350,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 							<key>OutputName</key>
 							<string>Count</string>
 							<key>OutputUUID</key>
-							<string>18191C15-4282-4B2C-B802-745D97331D01</string>
+							<string>9B1427DF-B025-4759-B771-B6DE9AEE8D7E</string>
 							<key>Type</key>
 							<string>ActionOutput</string>
 						</dict>
@@ -405,9 +405,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>F4FC65B6-FEE4-431E-8D4D-5CD7372F064F</string>
+				<string>CF1F6E14-498B-4C9D-AA85-6B662AFAD389</string>
 				<key>UUID</key>
-				<string>2F73CF1F-86A7-4907-85E5-41E2CEC833F7</string>
+				<string>9D4181DD-E0C0-4AB7-A0E7-59C0FB757E75</string>
 				<key>WFControlFlowMode</key>
 				<integer>2</integer>
 			</dict>
@@ -418,7 +418,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>444E0B75-DC9A-4CBE-894E-DA7D7F55067A</string>
+				<string>56E150BE-5C40-4098-894B-41AE2DAFC179</string>
 				<key>WFMatchTextPattern</key>
 				<string>(?m)^Brightwheel Attendance$</string>
 				<key>text</key>
@@ -432,7 +432,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 								<key>OutputName</key>
 								<string>Library Names</string>
 								<key>OutputUUID</key>
-								<string>031D4F3D-0133-43F4-A579-95B05EE4098D</string>
+								<string>B04F443A-1823-4198-A499-A7C6B097FCFE</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -457,7 +457,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>444E0B75-DC9A-4CBE-894E-DA7D7F55067A</string>
+						<string>56E150BE-5C40-4098-894B-41AE2DAFC179</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -465,7 +465,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 					<string>WFTextTokenAttachment</string>
 				</dict>
 				<key>UUID</key>
-				<string>539571E5-DC5C-4399-B083-A12AB7A244EA</string>
+				<string>01FF2CB9-36C6-450A-8AB3-0FAB06D4EA64</string>
 				<key>WFCountType</key>
 				<string>Items</string>
 				<key>WFInput</key>
@@ -475,7 +475,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>444E0B75-DC9A-4CBE-894E-DA7D7F55067A</string>
+						<string>56E150BE-5C40-4098-894B-41AE2DAFC179</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -490,7 +490,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>CA3DCDA3-F46F-4537-A3B8-DEDF1096149D</string>
+				<string>A9F2F60E-8561-4BA4-8040-3235C3DC94CF</string>
 				<key>WFInput</key>
 				<dict>
 					<key>Value</key>
@@ -498,7 +498,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Number</string>
 						<key>OutputUUID</key>
-						<string>18D9DA89-03B5-42CB-B363-6948D398AD31</string>
+						<string>6C472DA1-F79B-41AC-ABAB-0FC22165EDE0</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -512,7 +512,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Count</string>
 						<key>OutputUUID</key>
-						<string>539571E5-DC5C-4399-B083-A12AB7A244EA</string>
+						<string>01FF2CB9-36C6-450A-8AB3-0FAB06D4EA64</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -540,9 +540,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>3F549FDE-FE8F-423D-8C7C-A730FAADF8BC</string>
+				<string>D1BD5E77-1FD0-4D4C-91F4-A60A153DF89E</string>
 				<key>UUID</key>
-				<string>DB16C11D-3ECC-4B76-9D13-9849F8142E08</string>
+				<string>FE5B8E5B-F35C-48E6-A3C8-D9A27CF939F5</string>
 				<key>WFCondition</key>
 				<integer>2</integer>
 				<key>WFControlFlowMode</key>
@@ -558,7 +558,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 							<key>OutputName</key>
 							<string>Calculation Result</string>
 							<key>OutputUUID</key>
-							<string>CA3DCDA3-F46F-4537-A3B8-DEDF1096149D</string>
+							<string>A9F2F60E-8561-4BA4-8040-3235C3DC94CF</string>
 							<key>Type</key>
 							<string>ActionOutput</string>
 						</dict>
@@ -613,9 +613,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>3F549FDE-FE8F-423D-8C7C-A730FAADF8BC</string>
+				<string>D1BD5E77-1FD0-4D4C-91F4-A60A153DF89E</string>
 				<key>UUID</key>
-				<string>2F43DEBD-7280-48D9-89E3-E486F53956DE</string>
+				<string>12F1760E-6820-4B22-A9F6-1DACEA7532EC</string>
 				<key>WFControlFlowMode</key>
 				<integer>2</integer>
 			</dict>
@@ -626,7 +626,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>6D03C430-873B-42EF-9580-477D1ADC9F5F</string>
+				<string>6510E0F1-139A-4623-9631-B7FB56583F6C</string>
 				<key>WFMatchTextPattern</key>
 				<string>(?m)^Brightwheel Check In( \d+)?$</string>
 				<key>text</key>
@@ -640,7 +640,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 								<key>OutputName</key>
 								<string>Library Names</string>
 								<key>OutputUUID</key>
-								<string>031D4F3D-0133-43F4-A579-95B05EE4098D</string>
+								<string>B04F443A-1823-4198-A499-A7C6B097FCFE</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -665,7 +665,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>6D03C430-873B-42EF-9580-477D1ADC9F5F</string>
+						<string>6510E0F1-139A-4623-9631-B7FB56583F6C</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -673,7 +673,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 					<string>WFTextTokenAttachment</string>
 				</dict>
 				<key>UUID</key>
-				<string>013F8701-C819-4E3B-97C8-96352F215745</string>
+				<string>D74F4999-3319-4B25-A21F-912C6CC79773</string>
 				<key>WFCountType</key>
 				<string>Items</string>
 				<key>WFInput</key>
@@ -683,7 +683,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>6D03C430-873B-42EF-9580-477D1ADC9F5F</string>
+						<string>6510E0F1-139A-4623-9631-B7FB56583F6C</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -710,9 +710,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>36414E1C-FA4D-46D9-A49E-7F98D86B001E</string>
+				<string>048DAE07-8047-4227-961C-EFB371DD0359</string>
 				<key>UUID</key>
-				<string>0024C094-4FCA-43F5-BD7F-D0CC07ED0C9D</string>
+				<string>7662D7F0-1246-4B5D-BABE-D7C38A468284</string>
 				<key>WFCondition</key>
 				<integer>2</integer>
 				<key>WFControlFlowMode</key>
@@ -728,7 +728,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 							<key>OutputName</key>
 							<string>Count</string>
 							<key>OutputUUID</key>
-							<string>013F8701-C819-4E3B-97C8-96352F215745</string>
+							<string>D74F4999-3319-4B25-A21F-912C6CC79773</string>
 							<key>Type</key>
 							<string>ActionOutput</string>
 						</dict>
@@ -783,9 +783,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>36414E1C-FA4D-46D9-A49E-7F98D86B001E</string>
+				<string>048DAE07-8047-4227-961C-EFB371DD0359</string>
 				<key>UUID</key>
-				<string>8BF7C0C3-8B77-4272-BB41-E1694D520DA4</string>
+				<string>4C816CBC-4673-4D61-9A79-DA57ED0505F1</string>
 				<key>WFControlFlowMode</key>
 				<integer>2</integer>
 			</dict>
@@ -796,7 +796,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>B0460E83-70ED-43DF-900D-9C99E31C61A9</string>
+				<string>62B1369B-9318-4308-A166-4640EF246450</string>
 				<key>WFMatchTextPattern</key>
 				<string>(?m)^Brightwheel Check In \d+$</string>
 				<key>text</key>
@@ -810,7 +810,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 								<key>OutputName</key>
 								<string>Library Names</string>
 								<key>OutputUUID</key>
-								<string>031D4F3D-0133-43F4-A579-95B05EE4098D</string>
+								<string>B04F443A-1823-4198-A499-A7C6B097FCFE</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -835,7 +835,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>B0460E83-70ED-43DF-900D-9C99E31C61A9</string>
+						<string>62B1369B-9318-4308-A166-4640EF246450</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -843,7 +843,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 					<string>WFTextTokenAttachment</string>
 				</dict>
 				<key>UUID</key>
-				<string>4383234A-59DC-452B-9C66-0019B2619120</string>
+				<string>0BF9ED5B-07C1-42AC-AF97-C4783C2E0D9C</string>
 				<key>WFCountType</key>
 				<string>Items</string>
 				<key>WFInput</key>
@@ -853,7 +853,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>B0460E83-70ED-43DF-900D-9C99E31C61A9</string>
+						<string>62B1369B-9318-4308-A166-4640EF246450</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -870,7 +870,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 				<key>WFCommentActionText</key>
 				<string>Stop if the only copy has a number after its name.
 - Condition counts copies named Brightwheel Check In followed by a number
-- It would be shared under that name, and the wrappers call Brightwheel Check In by its exact name</string>
+- It would be shared under that name, and anything calling Brightwheel Check In calls it by its exact name</string>
 			</dict>
 		</dict>
 		<dict>
@@ -879,9 +879,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>6347E0BA-61FC-47E0-B68D-20CC6AC2B825</string>
+				<string>D0034557-509E-4244-90C6-0291E5CFD8FF</string>
 				<key>UUID</key>
-				<string>C31BCA79-C2AB-4EE1-A5E1-08BE45494F47</string>
+				<string>1EF228CA-4673-409A-BC81-ADD05227A6EB</string>
 				<key>WFCondition</key>
 				<integer>2</integer>
 				<key>WFControlFlowMode</key>
@@ -897,7 +897,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 							<key>OutputName</key>
 							<string>Count</string>
 							<key>OutputUUID</key>
-							<string>4383234A-59DC-452B-9C66-0019B2619120</string>
+							<string>0BF9ED5B-07C1-42AC-AF97-C4783C2E0D9C</string>
 							<key>Type</key>
 							<string>ActionOutput</string>
 						</dict>
@@ -952,9 +952,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>6347E0BA-61FC-47E0-B68D-20CC6AC2B825</string>
+				<string>D0034557-509E-4244-90C6-0291E5CFD8FF</string>
 				<key>UUID</key>
-				<string>9AFD709C-41CF-4C9C-80CB-4B6CDC8A2AA4</string>
+				<string>1CF0D5A2-C220-4A3D-9A06-AE94BBCC2043</string>
 				<key>WFControlFlowMode</key>
 				<integer>2</integer>
 			</dict>
@@ -965,7 +965,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>241A454C-1195-4143-94E1-FE04016C28FA</string>
+				<string>8939A8C8-073C-48BB-9A65-68217DDFE312</string>
 				<key>WFMatchTextPattern</key>
 				<string>(?m)^Brightwheel Check In$</string>
 				<key>text</key>
@@ -979,7 +979,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 								<key>OutputName</key>
 								<string>Library Names</string>
 								<key>OutputUUID</key>
-								<string>031D4F3D-0133-43F4-A579-95B05EE4098D</string>
+								<string>B04F443A-1823-4198-A499-A7C6B097FCFE</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -1004,7 +1004,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>241A454C-1195-4143-94E1-FE04016C28FA</string>
+						<string>8939A8C8-073C-48BB-9A65-68217DDFE312</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1012,7 +1012,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 					<string>WFTextTokenAttachment</string>
 				</dict>
 				<key>UUID</key>
-				<string>61D41E63-28F7-49C8-9FA1-EEB5BD5D134A</string>
+				<string>1AB8014E-FD00-451C-BB4C-D5C2CBDAD304</string>
 				<key>WFCountType</key>
 				<string>Items</string>
 				<key>WFInput</key>
@@ -1022,7 +1022,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>241A454C-1195-4143-94E1-FE04016C28FA</string>
+						<string>8939A8C8-073C-48BB-9A65-68217DDFE312</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1037,7 +1037,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>526284BA-FFCA-4713-8664-85AB6100162A</string>
+				<string>CD7E4D29-2F33-4C56-98A6-0CDE923E8F1C</string>
 				<key>WFInput</key>
 				<dict>
 					<key>Value</key>
@@ -1045,7 +1045,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Number</string>
 						<key>OutputUUID</key>
-						<string>18D9DA89-03B5-42CB-B363-6948D398AD31</string>
+						<string>6C472DA1-F79B-41AC-ABAB-0FC22165EDE0</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1059,7 +1059,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Count</string>
 						<key>OutputUUID</key>
-						<string>61D41E63-28F7-49C8-9FA1-EEB5BD5D134A</string>
+						<string>1AB8014E-FD00-451C-BB4C-D5C2CBDAD304</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1087,9 +1087,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>DA478FE9-33BD-4825-B29A-298700ABFEE7</string>
+				<string>0AFD6834-BBBB-45B4-9FD4-DB054DD9A749</string>
 				<key>UUID</key>
-				<string>EF4D41CD-6332-431C-B074-4B8748492DA1</string>
+				<string>8A4BA71F-E786-4501-8B82-A3F86A9DD161</string>
 				<key>WFCondition</key>
 				<integer>2</integer>
 				<key>WFControlFlowMode</key>
@@ -1105,7 +1105,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 							<key>OutputName</key>
 							<string>Calculation Result</string>
 							<key>OutputUUID</key>
-							<string>526284BA-FFCA-4713-8664-85AB6100162A</string>
+							<string>CD7E4D29-2F33-4C56-98A6-0CDE923E8F1C</string>
 							<key>Type</key>
 							<string>ActionOutput</string>
 						</dict>
@@ -1160,9 +1160,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>DA478FE9-33BD-4825-B29A-298700ABFEE7</string>
+				<string>0AFD6834-BBBB-45B4-9FD4-DB054DD9A749</string>
 				<key>UUID</key>
-				<string>461E8441-61C1-460E-9A1E-6BD92904F1EF</string>
+				<string>0EB2D027-A089-465F-9827-4048BD95B815</string>
 				<key>WFControlFlowMode</key>
 				<integer>2</integer>
 			</dict>
@@ -1173,7 +1173,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>121E8D7D-CFD1-4502-8ECC-E6F320960810</string>
+				<string>4FBEB7CA-0E44-40A2-9DCC-655220664D4C</string>
 				<key>WFMatchTextPattern</key>
 				<string>(?m)^Brightwheel Check Out( \d+)?$</string>
 				<key>text</key>
@@ -1187,7 +1187,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 								<key>OutputName</key>
 								<string>Library Names</string>
 								<key>OutputUUID</key>
-								<string>031D4F3D-0133-43F4-A579-95B05EE4098D</string>
+								<string>B04F443A-1823-4198-A499-A7C6B097FCFE</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -1212,7 +1212,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>121E8D7D-CFD1-4502-8ECC-E6F320960810</string>
+						<string>4FBEB7CA-0E44-40A2-9DCC-655220664D4C</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1220,7 +1220,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 					<string>WFTextTokenAttachment</string>
 				</dict>
 				<key>UUID</key>
-				<string>1B8E5F4A-E244-4F06-8255-4F849DC1C09D</string>
+				<string>A67AC7C5-A56C-4031-ADCE-CA0984D7A446</string>
 				<key>WFCountType</key>
 				<string>Items</string>
 				<key>WFInput</key>
@@ -1230,7 +1230,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>121E8D7D-CFD1-4502-8ECC-E6F320960810</string>
+						<string>4FBEB7CA-0E44-40A2-9DCC-655220664D4C</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1257,9 +1257,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>5933BA05-CF0C-44A8-95B4-FA45208C4560</string>
+				<string>91C8ECEC-6293-4BCA-9ECA-DD8CAD983A04</string>
 				<key>UUID</key>
-				<string>C604F675-53D1-48AE-B8EA-E286FC9560D7</string>
+				<string>3EC5253A-8EEB-43F8-A210-0996BE3F3B29</string>
 				<key>WFCondition</key>
 				<integer>2</integer>
 				<key>WFControlFlowMode</key>
@@ -1275,7 +1275,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 							<key>OutputName</key>
 							<string>Count</string>
 							<key>OutputUUID</key>
-							<string>1B8E5F4A-E244-4F06-8255-4F849DC1C09D</string>
+							<string>A67AC7C5-A56C-4031-ADCE-CA0984D7A446</string>
 							<key>Type</key>
 							<string>ActionOutput</string>
 						</dict>
@@ -1330,9 +1330,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>5933BA05-CF0C-44A8-95B4-FA45208C4560</string>
+				<string>91C8ECEC-6293-4BCA-9ECA-DD8CAD983A04</string>
 				<key>UUID</key>
-				<string>527EC75E-6FC3-4BCF-A4F5-4D5A503AA1A9</string>
+				<string>847A9206-4FFE-450A-9E72-687C02F3D1CC</string>
 				<key>WFControlFlowMode</key>
 				<integer>2</integer>
 			</dict>
@@ -1343,7 +1343,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>1980E32D-E910-4189-B9FE-0A0DFED671DB</string>
+				<string>C75CBD24-C01F-4A94-9391-E750CDB30EB8</string>
 				<key>WFMatchTextPattern</key>
 				<string>(?m)^Brightwheel Check Out \d+$</string>
 				<key>text</key>
@@ -1357,7 +1357,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 								<key>OutputName</key>
 								<string>Library Names</string>
 								<key>OutputUUID</key>
-								<string>031D4F3D-0133-43F4-A579-95B05EE4098D</string>
+								<string>B04F443A-1823-4198-A499-A7C6B097FCFE</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -1382,7 +1382,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>1980E32D-E910-4189-B9FE-0A0DFED671DB</string>
+						<string>C75CBD24-C01F-4A94-9391-E750CDB30EB8</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1390,7 +1390,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 					<string>WFTextTokenAttachment</string>
 				</dict>
 				<key>UUID</key>
-				<string>DAB82647-DF7D-469C-9692-204D1F883081</string>
+				<string>E4454843-FD84-4E5E-B057-94739E70DC51</string>
 				<key>WFCountType</key>
 				<string>Items</string>
 				<key>WFInput</key>
@@ -1400,7 +1400,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>1980E32D-E910-4189-B9FE-0A0DFED671DB</string>
+						<string>C75CBD24-C01F-4A94-9391-E750CDB30EB8</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1417,7 +1417,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 				<key>WFCommentActionText</key>
 				<string>Stop if the only copy has a number after its name.
 - Condition counts copies named Brightwheel Check Out followed by a number
-- It would be shared under that name, and the wrappers call Brightwheel Check Out by its exact name</string>
+- It would be shared under that name, and anything calling Brightwheel Check Out calls it by its exact name</string>
 			</dict>
 		</dict>
 		<dict>
@@ -1426,9 +1426,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>573FD809-2652-4E42-A780-A4326BB80B2A</string>
+				<string>E26CFE6B-4B84-496E-999B-CB6C094BA88D</string>
 				<key>UUID</key>
-				<string>F9D0FEB9-58B3-4B63-96D7-A6884A7E6303</string>
+				<string>66FE5D89-5AA7-492D-A2C7-8729825FEF44</string>
 				<key>WFCondition</key>
 				<integer>2</integer>
 				<key>WFControlFlowMode</key>
@@ -1444,7 +1444,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 							<key>OutputName</key>
 							<string>Count</string>
 							<key>OutputUUID</key>
-							<string>DAB82647-DF7D-469C-9692-204D1F883081</string>
+							<string>E4454843-FD84-4E5E-B057-94739E70DC51</string>
 							<key>Type</key>
 							<string>ActionOutput</string>
 						</dict>
@@ -1499,9 +1499,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>573FD809-2652-4E42-A780-A4326BB80B2A</string>
+				<string>E26CFE6B-4B84-496E-999B-CB6C094BA88D</string>
 				<key>UUID</key>
-				<string>82B6AFFC-3875-4BB8-AB67-E1A90CE8F633</string>
+				<string>E37345FF-C628-47C0-8947-38B23EC46538</string>
 				<key>WFControlFlowMode</key>
 				<integer>2</integer>
 			</dict>
@@ -1512,7 +1512,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>D5FC2D7F-4BC1-48FF-BF45-999F7C1EF9AE</string>
+				<string>65145EB9-A882-4D40-B3DD-D7BF573CAFC7</string>
 				<key>WFMatchTextPattern</key>
 				<string>(?m)^Brightwheel Check Out$</string>
 				<key>text</key>
@@ -1526,7 +1526,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 								<key>OutputName</key>
 								<string>Library Names</string>
 								<key>OutputUUID</key>
-								<string>031D4F3D-0133-43F4-A579-95B05EE4098D</string>
+								<string>B04F443A-1823-4198-A499-A7C6B097FCFE</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -1551,7 +1551,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>D5FC2D7F-4BC1-48FF-BF45-999F7C1EF9AE</string>
+						<string>65145EB9-A882-4D40-B3DD-D7BF573CAFC7</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1559,7 +1559,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 					<string>WFTextTokenAttachment</string>
 				</dict>
 				<key>UUID</key>
-				<string>18DA78F4-7DCE-4626-885D-A04B130A9B6C</string>
+				<string>0774E2A4-6FCA-4BF4-9054-F7E714DABB57</string>
 				<key>WFCountType</key>
 				<string>Items</string>
 				<key>WFInput</key>
@@ -1569,7 +1569,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>D5FC2D7F-4BC1-48FF-BF45-999F7C1EF9AE</string>
+						<string>65145EB9-A882-4D40-B3DD-D7BF573CAFC7</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1584,7 +1584,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>2BBB9BD3-FF9D-42AA-A3A3-19AB018E9901</string>
+				<string>A6F70395-567F-4915-A886-64D2C43FE3E6</string>
 				<key>WFInput</key>
 				<dict>
 					<key>Value</key>
@@ -1592,7 +1592,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Number</string>
 						<key>OutputUUID</key>
-						<string>18D9DA89-03B5-42CB-B363-6948D398AD31</string>
+						<string>6C472DA1-F79B-41AC-ABAB-0FC22165EDE0</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1606,7 +1606,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Count</string>
 						<key>OutputUUID</key>
-						<string>18DA78F4-7DCE-4626-885D-A04B130A9B6C</string>
+						<string>0774E2A4-6FCA-4BF4-9054-F7E714DABB57</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1634,9 +1634,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>3B48C1A8-2D11-49F2-AF15-9FD4EA85727C</string>
+				<string>71CE80AC-BB0A-4CA5-B1A7-B6AAEC19C4AC</string>
 				<key>UUID</key>
-				<string>2370E2B4-7C1D-4184-933A-4F5C13D0268C</string>
+				<string>F3440649-78AC-4192-BEA0-25F19E65141E</string>
 				<key>WFCondition</key>
 				<integer>2</integer>
 				<key>WFControlFlowMode</key>
@@ -1652,7 +1652,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 							<key>OutputName</key>
 							<string>Calculation Result</string>
 							<key>OutputUUID</key>
-							<string>2BBB9BD3-FF9D-42AA-A3A3-19AB018E9901</string>
+							<string>A6F70395-567F-4915-A886-64D2C43FE3E6</string>
 							<key>Type</key>
 							<string>ActionOutput</string>
 						</dict>
@@ -1707,9 +1707,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>3B48C1A8-2D11-49F2-AF15-9FD4EA85727C</string>
+				<string>71CE80AC-BB0A-4CA5-B1A7-B6AAEC19C4AC</string>
 				<key>UUID</key>
-				<string>C434D651-781A-4CEB-A43C-0DCD96EA91BD</string>
+				<string>D755637C-5C96-4573-8EF8-651BF85ECAB7</string>
 				<key>WFControlFlowMode</key>
 				<integer>2</integer>
 			</dict>
@@ -1720,7 +1720,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>WFCommentActionText</key>
-				<string>Walk the library and link each of the three.
+				<string>Walk the library and link each of the 3.
 - Input is My Shortcuts, the whole library
 - Each Repeat Item is one shortcut, found by its exact name</string>
 			</dict>
@@ -1731,9 +1731,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>B181920D-05F4-49D8-B90C-5A1436FFFA85</string>
+				<string>27DABB17-ED05-4D49-A4AB-15DBEA4F6C2D</string>
 				<key>UUID</key>
-				<string>D9EE1DCE-E48B-4314-9711-8008890D71B3</string>
+				<string>BB0A4037-E5C9-439E-A6FB-97C49651DFCD</string>
 				<key>WFControlFlowMode</key>
 				<integer>0</integer>
 				<key>WFInput</key>
@@ -1743,7 +1743,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>My Shortcuts</string>
 						<key>OutputUUID</key>
-						<string>A0D482B2-5A75-42D5-8EC9-2E505AD75B42</string>
+						<string>DF99EAA3-6695-44D3-82FE-7C3D1A0115C6</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1760,7 +1760,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 				<key>CustomOutputName</key>
 				<string>Name</string>
 				<key>UUID</key>
-				<string>76D93A88-DB03-4702-B546-DE156AFBE592</string>
+				<string>F365825E-0213-4D7B-8F79-2C14E349F6BE</string>
 				<key>WFTextActionText</key>
 				<dict>
 					<key>Value</key>
@@ -1789,7 +1789,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>22D51FFE-6940-4F97-8BFE-5B703BE7A526</string>
+				<string>DFA10F57-4321-4979-8F65-8540D3B4DE42</string>
 				<key>WFMatchTextPattern</key>
 				<string>^Brightwheel Attendance$</string>
 				<key>text</key>
@@ -1803,7 +1803,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 								<key>OutputName</key>
 								<string>Name</string>
 								<key>OutputUUID</key>
-								<string>76D93A88-DB03-4702-B546-DE156AFBE592</string>
+								<string>F365825E-0213-4D7B-8F79-2C14E349F6BE</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -1828,7 +1828,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>22D51FFE-6940-4F97-8BFE-5B703BE7A526</string>
+						<string>DFA10F57-4321-4979-8F65-8540D3B4DE42</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1836,7 +1836,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 					<string>WFTextTokenAttachment</string>
 				</dict>
 				<key>UUID</key>
-				<string>B7F1A7A9-0A41-4594-B352-64A19F7FEA83</string>
+				<string>9B36CCE1-BE43-48A2-A00F-4121C8536078</string>
 				<key>WFCountType</key>
 				<string>Items</string>
 				<key>WFInput</key>
@@ -1846,7 +1846,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>22D51FFE-6940-4F97-8BFE-5B703BE7A526</string>
+						<string>DFA10F57-4321-4979-8F65-8540D3B4DE42</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1872,9 +1872,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>B459DD91-61C1-4C9A-B42A-A0AD994517CE</string>
+				<string>E46D21BF-8784-493E-BB7C-BEB38B1BC787</string>
 				<key>UUID</key>
-				<string>69DC58A1-C760-4810-95FF-E7196A5269C2</string>
+				<string>88096326-07D8-4ED9-9415-1FBB16510C25</string>
 				<key>WFCondition</key>
 				<integer>2</integer>
 				<key>WFControlFlowMode</key>
@@ -1890,7 +1890,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 							<key>OutputName</key>
 							<string>Count</string>
 							<key>OutputUUID</key>
-							<string>B7F1A7A9-0A41-4594-B352-64A19F7FEA83</string>
+							<string>9B36CCE1-BE43-48A2-A00F-4121C8536078</string>
 							<key>Type</key>
 							<string>ActionOutput</string>
 						</dict>
@@ -1921,7 +1921,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 				<key>CustomOutputName</key>
 				<string>Link for Brightwheel Attendance</string>
 				<key>UUID</key>
-				<string>E9DA5975-F50C-41F5-A77F-890035BC6B45</string>
+				<string>AC809025-CEB2-4F3C-92F8-C4D71450B72A</string>
 				<key>shortcut</key>
 				<dict>
 					<key>Value</key>
@@ -1948,7 +1948,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Link for Brightwheel Attendance</string>
 						<key>OutputUUID</key>
-						<string>E9DA5975-F50C-41F5-A77F-890035BC6B45</string>
+						<string>AC809025-CEB2-4F3C-92F8-C4D71450B72A</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -1965,9 +1965,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>B459DD91-61C1-4C9A-B42A-A0AD994517CE</string>
+				<string>E46D21BF-8784-493E-BB7C-BEB38B1BC787</string>
 				<key>UUID</key>
-				<string>E495E888-4EAE-4420-872D-03556BC262DA</string>
+				<string>8DD3E1EB-51C1-459B-8967-8402866FAFBB</string>
 				<key>WFControlFlowMode</key>
 				<integer>2</integer>
 			</dict>
@@ -1978,7 +1978,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>5D3636D3-590C-4FEF-961A-0C854BDBF270</string>
+				<string>74715DBE-B3F3-4B8D-8249-6DB77FDD0721</string>
 				<key>WFMatchTextPattern</key>
 				<string>^Brightwheel Check In$</string>
 				<key>text</key>
@@ -1992,7 +1992,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 								<key>OutputName</key>
 								<string>Name</string>
 								<key>OutputUUID</key>
-								<string>76D93A88-DB03-4702-B546-DE156AFBE592</string>
+								<string>F365825E-0213-4D7B-8F79-2C14E349F6BE</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -2017,7 +2017,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>5D3636D3-590C-4FEF-961A-0C854BDBF270</string>
+						<string>74715DBE-B3F3-4B8D-8249-6DB77FDD0721</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -2025,7 +2025,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 					<string>WFTextTokenAttachment</string>
 				</dict>
 				<key>UUID</key>
-				<string>20A24A2B-0A58-4336-925F-13F3E8A1E816</string>
+				<string>9BAD6328-1810-4F99-81EE-25DA28305278</string>
 				<key>WFCountType</key>
 				<string>Items</string>
 				<key>WFInput</key>
@@ -2035,7 +2035,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>5D3636D3-590C-4FEF-961A-0C854BDBF270</string>
+						<string>74715DBE-B3F3-4B8D-8249-6DB77FDD0721</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -2061,9 +2061,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>FE8835DC-3876-4AFF-9BD2-5ED990B11BBF</string>
+				<string>14CD36BC-5AF2-4526-B0A8-01DBB77D1848</string>
 				<key>UUID</key>
-				<string>E5A83E52-DF89-439C-AA17-337B338E3E40</string>
+				<string>D1BE307C-0D8B-411C-8D2A-CED89F97DB25</string>
 				<key>WFCondition</key>
 				<integer>2</integer>
 				<key>WFControlFlowMode</key>
@@ -2079,7 +2079,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 							<key>OutputName</key>
 							<string>Count</string>
 							<key>OutputUUID</key>
-							<string>20A24A2B-0A58-4336-925F-13F3E8A1E816</string>
+							<string>9BAD6328-1810-4F99-81EE-25DA28305278</string>
 							<key>Type</key>
 							<string>ActionOutput</string>
 						</dict>
@@ -2110,7 +2110,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 				<key>CustomOutputName</key>
 				<string>Link for Brightwheel Check In</string>
 				<key>UUID</key>
-				<string>F95DAD3B-484E-4EB5-A907-8F57F8D825D2</string>
+				<string>C04D7F84-C158-462E-B269-A77308EA956F</string>
 				<key>shortcut</key>
 				<dict>
 					<key>Value</key>
@@ -2137,7 +2137,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Link for Brightwheel Check In</string>
 						<key>OutputUUID</key>
-						<string>F95DAD3B-484E-4EB5-A907-8F57F8D825D2</string>
+						<string>C04D7F84-C158-462E-B269-A77308EA956F</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -2154,9 +2154,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>FE8835DC-3876-4AFF-9BD2-5ED990B11BBF</string>
+				<string>14CD36BC-5AF2-4526-B0A8-01DBB77D1848</string>
 				<key>UUID</key>
-				<string>5FED7BB9-F23B-4453-B6B5-D1D6F1F6D262</string>
+				<string>36416ED7-78F4-4AA8-B7C4-1C8D550B7C50</string>
 				<key>WFControlFlowMode</key>
 				<integer>2</integer>
 			</dict>
@@ -2167,7 +2167,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>UUID</key>
-				<string>F6B73A04-A254-49E1-88E9-77E1D9C6EF0A</string>
+				<string>209A0194-E047-4617-9D1F-67F73FF5DE2D</string>
 				<key>WFMatchTextPattern</key>
 				<string>^Brightwheel Check Out$</string>
 				<key>text</key>
@@ -2181,7 +2181,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 								<key>OutputName</key>
 								<string>Name</string>
 								<key>OutputUUID</key>
-								<string>76D93A88-DB03-4702-B546-DE156AFBE592</string>
+								<string>F365825E-0213-4D7B-8F79-2C14E349F6BE</string>
 								<key>Type</key>
 								<string>ActionOutput</string>
 							</dict>
@@ -2206,7 +2206,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>F6B73A04-A254-49E1-88E9-77E1D9C6EF0A</string>
+						<string>209A0194-E047-4617-9D1F-67F73FF5DE2D</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -2214,7 +2214,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 					<string>WFTextTokenAttachment</string>
 				</dict>
 				<key>UUID</key>
-				<string>B326CB41-DE78-491F-8F50-395F7E1855E0</string>
+				<string>85257959-6661-4C5A-8490-98ABB7AD1778</string>
 				<key>WFCountType</key>
 				<string>Items</string>
 				<key>WFInput</key>
@@ -2224,7 +2224,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Matches</string>
 						<key>OutputUUID</key>
-						<string>F6B73A04-A254-49E1-88E9-77E1D9C6EF0A</string>
+						<string>209A0194-E047-4617-9D1F-67F73FF5DE2D</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -2250,9 +2250,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>AF3DF3BB-DB6E-4D93-AE3A-0904DE43D1A0</string>
+				<string>1D06B385-F657-4B07-A1C4-7CA5CC15FC2E</string>
 				<key>UUID</key>
-				<string>7EAF7DA8-4952-4373-9E49-DD1FAA2F7019</string>
+				<string>4F771207-97C2-479C-8D9A-A465D38F8C5B</string>
 				<key>WFCondition</key>
 				<integer>2</integer>
 				<key>WFControlFlowMode</key>
@@ -2268,7 +2268,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 							<key>OutputName</key>
 							<string>Count</string>
 							<key>OutputUUID</key>
-							<string>B326CB41-DE78-491F-8F50-395F7E1855E0</string>
+							<string>85257959-6661-4C5A-8490-98ABB7AD1778</string>
 							<key>Type</key>
 							<string>ActionOutput</string>
 						</dict>
@@ -2299,7 +2299,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 				<key>CustomOutputName</key>
 				<string>Link for Brightwheel Check Out</string>
 				<key>UUID</key>
-				<string>06E1005A-F7BA-4A51-9DE6-BDAC4331F0F1</string>
+				<string>5496D7E7-8898-42D9-959E-52D6B77D25A5</string>
 				<key>shortcut</key>
 				<dict>
 					<key>Value</key>
@@ -2326,7 +2326,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Link for Brightwheel Check Out</string>
 						<key>OutputUUID</key>
-						<string>06E1005A-F7BA-4A51-9DE6-BDAC4331F0F1</string>
+						<string>5496D7E7-8898-42D9-959E-52D6B77D25A5</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -2343,9 +2343,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>AF3DF3BB-DB6E-4D93-AE3A-0904DE43D1A0</string>
+				<string>1D06B385-F657-4B07-A1C4-7CA5CC15FC2E</string>
 				<key>UUID</key>
-				<string>9F47AB5B-E5F9-4684-B689-C22B21F8B91A</string>
+				<string>C435652B-3A75-4C41-8C4E-2F87E086BE33</string>
 				<key>WFControlFlowMode</key>
 				<integer>2</integer>
 			</dict>
@@ -2356,9 +2356,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>GroupingIdentifier</key>
-				<string>B181920D-05F4-49D8-B90C-5A1436FFFA85</string>
+				<string>27DABB17-ED05-4D49-A4AB-15DBEA4F6C2D</string>
 				<key>UUID</key>
-				<string>86B50B4B-D16B-43B4-B944-B399ADC61421</string>
+				<string>2045189A-370F-4BE2-8E85-2133FACB69F2</string>
 				<key>WFControlFlowMode</key>
 				<integer>2</integer>
 			</dict>
@@ -2369,9 +2369,9 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 			<key>WFWorkflowActionParameters</key>
 			<dict>
 				<key>WFCommentActionText</key>
-				<string>Copy the markup docs/index.html wants.
-- Three &lt;li&gt; lines, in the page's order
-- Then run tools/verify_links.py and tools/update_links.py</string>
+				<string>Copy the rendered links.
+- One line per shortcut, in order
+- Then verify the links before publishing them anywhere</string>
 			</dict>
 		</dict>
 		<dict>
@@ -2382,7 +2382,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 				<key>CustomOutputName</key>
 				<string>Markup</string>
 				<key>UUID</key>
-				<string>710597B6-3512-4488-ADBF-4A0BF4049AF8</string>
+				<string>BD13CA93-CAAD-48E0-B8D0-9F6657FF30B1</string>
 				<key>WFTextActionText</key>
 				<dict>
 					<key>Value</key>
@@ -2434,7 +2434,7 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 						<key>OutputName</key>
 						<string>Markup</string>
 						<key>OutputUUID</key>
-						<string>710597B6-3512-4488-ADBF-4A0BF4049AF8</string>
+						<string>BD13CA93-CAAD-48E0-B8D0-9F6657FF30B1</string>
 						<key>Type</key>
 						<string>ActionOutput</string>
 					</dict>
@@ -2445,17 +2445,17 @@ Each link asks you to confirm: three taps, once per release. If anything about t
 		</dict>
 		<dict>
 			<key>WFWorkflowActionIdentifier</key>
-			<string>is.workflow.actions.showresult</string>
+			<string>is.workflow.actions.notification</string>
 			<key>WFWorkflowActionParameters</key>
 			<dict>
-				<key>Text</key>
+				<key>WFNotificationActionBody</key>
 				<dict>
 					<key>Value</key>
 					<dict>
 						<key>attachmentsByRange</key>
 						<dict/>
 						<key>string</key>
-						<string>Copied three links. Now run: python3 tools/verify_links.py --clipboard --erase</string>
+						<string>Copied three links to the clipboard.</string>
 					</dict>
 					<key>WFSerializationType</key>
 					<string>WFTextTokenString</string>
