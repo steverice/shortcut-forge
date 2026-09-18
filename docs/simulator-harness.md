@@ -342,6 +342,32 @@ support matrix and the probes behind it. `shortcut_forge_lib.sim.probes.setup_pr
 is the two-action canary that measures it on any runtime, and
 `links.check_link` counts the questions an installed copy actually holds.
 
+**iOS 27.2 beta 1 (`24B5084k`) commits the answer again.** Measured 2026-09-18
+with `setup_probe`, driven through idb on a simulator, with iOS 27.0 (`24A434`)
+run through the identical procedure as the control:
+
+| runtime | answer typed, *Add Shortcut* tapped | nothing typed, *Skip Setup* tapped |
+|---|---|---|
+| iOS 27.0 `24A434` | nothing installed | installed, holding the placeholder |
+| iOS 27.2 beta 1 `24B5084k` | installed, holding the typed answer | installed, holding the placeholder |
+
+Each value was read out of `Shortcuts.sqlite`, not judged from the screen. Two
+attempts before the valid one were wrong in ways the old blue-button harness
+would have hidden: after typing, the software keyboard covers *Add Shortcut*,
+and a tap at the button's own frame lands on the keys; and on a fresh device,
+dismissing the keyboard with its *Close* button raises a first-run typing tip
+whose *Continue* hands focus back to the field and brings the keyboard back.
+The canary now clears both before it taps, and tapping *Add Shortcut* was
+confirmed by the editor opening on the installed shortcut afterward.
+
+This is a beta result, and the matrix already holds one beta that got this
+right before a later beta broke it. **When 27.2 ships:** run the canary on the
+release build, and then update the consumer-facing text that tells people to
+finish with Skip Setup — the install instructions and the note carried in the
+last setup question — so users on the fixed release are not steered around a
+bug they no longer have. brightwheel-checkin's `TESTING.md` names its own
+copies of that text.
+
 ## Importing on a Mac
 
 Worth knowing before minting iCloud links, since the link is a snapshot of
