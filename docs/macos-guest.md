@@ -753,14 +753,36 @@ proves it.
 
 **The base is a credential at rest.** Once it holds a signed-in Apple session it
 is an unencrypted image with auto-login enabled, and every clone inherits it.
-Observed rather than theorized: a local Time Machine snapshot was taken mid-session
-at 12:20 and captured the VM. Snapshots also pin deleted blocks, so reclaiming
-disk can appear to *reduce* free space until they are thinned. Exclude `~/.tart`
-from Time Machine.
+Observed rather than theorized: a local Time Machine snapshot was taken
+mid-session at 12:20 and captured the VM.
+
+**A Time Machine exclusion does not keep a guest out of a snapshot, and an
+earlier version of this document said it did.** Exclusions govern only what is
+copied *from* a snapshot to the backup destination. An APFS snapshot is a
+whole-volume, immutable, point-in-time reference; no path can be omitted from
+one, and nothing can be pruned out of one afterwards. The only granularity is
+deleting an entire snapshot.
+
+Measured 2026-09-17, with `~/.tart/vms` and `~/.tart/cache` both reporting
+`[Excluded]` to `tmutil isexcluded`: deleting two 32 GB guests returned **no**
+disk at all, because four local snapshots still referenced their blocks. Free
+space kept falling afterwards as new snapshots were taken. A `tart delete` on a
+snapshotted volume frees nothing until the snapshots holding those blocks go.
+
+**The fix is a separate APFS volume**, not an exclusion. Snapshots are per
+volume, so a guest on its own volume is never captured by a snapshot of the data
+volume, and `tart delete` returns its space at once. A new volume in the same
+container costs nothing and shares the container's free space, and `tart.home()`
+honors `TART_HOME`, so pointing it there is a one-line change. To unstick a
+volume that is already full, `tmutil thinlocalsnapshots / <bytes> 4` drops
+snapshots until the target is met — which costs every local restore point it
+deletes, and no Time Machine backups on the destination.
 
 **Disk.** The IPSW is about 25 GB cached, a restored base about 32 GB, and a
 restore needs roughly 60 GB free to be comfortable. `tart create --from-ipsw latest`
-downloads and caches it, so `ipsw` is not a required tool.
+downloads and caches it, so `ipsw` is not a required tool. Check free space
+immediately before a restore rather than during one: on a volume near capacity,
+running out mid-restore costs both the download and the guest.
 
 ## Open questions
 
