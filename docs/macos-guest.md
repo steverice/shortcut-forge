@@ -771,6 +771,35 @@ device. Whether a clone keeps a signed-in Apple session is **untested**.
 Base and clone must never run at once (identical machine identifiers), and
 Virtualization allows **two** concurrent macOS guests per host.
 
+**A clone keeps its base's signed-in Apple Account session.** Measured 2026-09-17
+on macOS 26.6.2: a base with an account signed in was stopped and cloned, and the
+clone — after a restart of its own — reported `brctl status` with 24 containers
+syncing, the same library, and no re-challenge of any kind. This is the finding
+the bake-once/clone-per-release shape depends on. It says nothing about macOS 27,
+where no session can be established to clone in the first place.
+
+**A hand-provisioned base does not auto-login, and its clones fail confusingly.**
+A 27 guest gets auto-login from `VZMacGuestProvisioningOptions`'s
+`logsInAutomatically`. A macOS 26 base has no provisioning — that flag needs 27
+on both sides — so unless someone sets it, every clone boots to a **login
+window**: `stat -f '%Su' /dev/console` reads `root`, `who` is empty, `bird` never
+starts so there is no iCloud session, and the `shortcuts` CLI fails with
+
+> Error: Couldn't communicate with a helper application.
+
+which is the same message this document attributes to `--no-graphics` removing
+the display. A reader who meets it on a clone will chase a display that is
+working fine.
+
+`sysadminctl -autologin set -userName <u> -password <p>` sets the user and then
+fails to store the password — `SACSetAutoLoginPassword error:22`, no
+`/etc/kcpassword` written — so auto-login still stops at the window. Writing that
+file directly works: it is the password XORed against the fixed key
+`7D 89 52 23 D2 BC DD EA A3 B9 1F`, zero-padded to a multiple of 12 (padding even
+when the length already divides), installed `root:wheel` mode 600. After a
+restart the console owner reads the account name and everything GUI-dependent
+works. Set it on the **base**, once, so every clone inherits it.
+
 **Whether a clone inherits its base's identity is unmeasured, and the obvious
 evidence for it is worthless.** A clone's `akd` logs an attestation chain:
 
@@ -864,12 +893,12 @@ Written down so nobody assumes an answer. Each is cheap once a guest exists.
 4. **Does a base carrying third-party kexts or drivers behave the same?** Raised
    by the `home-platform` rehearsal work, whose bases carry SoftRAID; the bases
    measured here carry nothing third-party.
-5. **Does a clone keep a signed-in Apple Account session?** Still untested, and
-   now for a blunter reason than before: no session has ever become ready in a
-   guest here, so there has been nothing to clone. The layer underneath is also
-   unmeasured — the attestation certificate that looked like evidence of
-   inheritance turned out to be backdated the same way in a guest that was never
-   cloned. See "Clones".
+5. ~~**Does a clone keep a signed-in Apple Account session?**~~ **Answered on
+   macOS 26.6.2: yes.** A clone of a signed-in base reported 24 iCloud containers
+   syncing after its own restart, with no re-challenge. See "Clones". Two things
+   near it are still open: whether a clone *inherits* its base's identity, which
+   the attestation certificate cannot show either way, and whether any of this
+   holds on a 27 guest, where no session exists to clone.
 6. **How do you read, and assert, that Shortcuts iCloud sync is off in a
    guest?** `bake` does not check, and it should: a synced library carries one
    clone's imports into the next clone's, which is exactly the more-than-one-copy
