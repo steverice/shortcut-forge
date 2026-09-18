@@ -28,6 +28,17 @@ differs lives in the two `_Host` classes in `sim/harness.py`. `xcrun simctl` is
 untouched under both, so every assertion about on-disk state is headless
 regardless.
 
+Device Hub is driven through the accessibility API by process id (`sim/ax.py`),
+not through System Events. On macOS 27.0 (26A428) with Xcode 27.0 (27A266a),
+System Events lists Device Hub with a unix id of 0, no windows and no menu bar,
+under either of its names (`DeviceHub`, `Device Hub`), after a restart of
+System Events, and however the app was launched, while
+`AXUIElementCreateApplication(pid)` reads the same process fine. The process is
+found by its executable path rather than its bundle id, because a Mac with an
+Xcode beta installed has two Device Hubs sharing one bundle id, and with both
+running LaunchServices answers a bundle-id lookup with a process id of -1.
+Simulator.app keeps the System Events route, which works there.
+
 Three things are genuinely harder under Device Hub, and are worth knowing when
 a run misbehaves:
 
@@ -39,6 +50,13 @@ a run misbehaves:
   checking the window title after each until it matches. Never send ⌘A hoping to
   clear that filter: ⌘A is Select All for the *device list*, and its modifier
   leaks into the clicks that follow, which quietly gathers up a multi-selection.
+  Escape clears the field, but on an *empty* field it moves focus to the "+"
+  button instead, and the device name typed next opens that button's menu and
+  picks an entry by its letters — measured on macOS 27.0, where it landed on
+  "Apple TV…" and opened the New Simulator sheet. The harness clicks the field
+  again after Escape, which puts focus back on it either way. A device popped
+  out into its own window carries the main window's title; the harness takes
+  the larger of the two, which is the one with the sidebar.
 - **The mapping is measured, not computed.** `Point Accurate` and
   `Show Device Bezels` are both gone, bezels are always drawn, and there is no
   1:1 zoom, so `_screen_box` finds the screen in pixels: it is the widest gap

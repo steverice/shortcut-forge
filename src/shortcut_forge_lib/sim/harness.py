@@ -35,6 +35,8 @@ import numpy as np
 import Quartz as _Quartz
 from PIL import Image
 
+from shortcut_forge_lib.sim import ax
+
 # pyobjc populates the Quartz namespace lazily and ships no stubs, so every
 # attribute on it is unresolved to a type checker. One cast here instead of an
 # ignore on each of the twenty call sites.
@@ -254,10 +256,15 @@ def _has_window(sim: Simulator) -> bool:
 
 
 class _Host:
-    """What this harness needs from whichever app is showing the device."""
+    """What this harness needs from whichever app is showing the device.
 
-    proc: str | None = None  # the System Events process name
-    keyboard_item: str | None = None  # menu item that connects the hardware keyboard
+    Windows are addressed by title and menu items by whatever `keyboard_item`
+    holds: an AppleScript reference for Simulator.app, which System Events
+    can see, and a path of menu titles for Device Hub, which it cannot.
+    """
+
+    proc: str | None = None  # the app's process name, for messages
+    keyboard_item: Any = None  # menu item that connects the hardware keyboard
 
     def __init__(self, app: Path) -> None:
         self.app = app
@@ -266,7 +273,7 @@ class _Host:
         _run("open", "-a", str(self.app))
 
     def activate(self) -> None:
-        _osa(f'tell application "System Events" to tell process "{self.proc}" to set frontmost to true')
+        raise NotImplementedError
 
     def select(self, sim: Simulator) -> None:
         """Make a window for this device exist. Runs before focus_window."""
@@ -278,9 +285,29 @@ class _Host:
         """(origin_x, origin_y, screen points per device pixel)."""
         raise NotImplementedError
 
+    # -- windows and menus ---------------------------------------------
+    def front_title(self) -> str:
+        """The frontmost window's title, or "" when there is none."""
+        raise NotImplementedError
+
+    def window_titles(self) -> list[str]:
+        raise NotImplementedError
+
+    def window_frame(self, title: str) -> tuple[int, int, int, int]:
+        """Raise the window with this title and return (x, y, width, height) in screen points."""
+        raise NotImplementedError
+
+    def menu_item(self, item: Any) -> tuple[bool, str | None]:
+        """(exists, mark_char) for a menu item; (False, None) when it is absent."""
+        raise NotImplementedError
+
+    def menu_click(self, item: Any) -> bool:
+        """Click a menu item. False when the frontmost window's menu has no such item."""
+        raise NotImplementedError
+
 
 class _SimulatorApp(_Host):
-    """Xcode 26 and earlier."""
+    """Xcode 26 and earlier, driven through System Events."""
 
     proc = "Simulator"
     keyboard_item = (
@@ -292,6 +319,45 @@ class _SimulatorApp(_Host):
 
     def activate(self) -> None:
         _osa('tell application "Simulator" to activate')
+
+    def _tell(self, script: str) -> str:
+        return _osa(f'tell application "System Events" to tell process "{self.proc}" to {script}')
+
+    def front_title(self) -> str:
+        try:
+            return self._tell("return name of window 1")
+        except SimulatorError:
+            return ""
+
+    def window_titles(self) -> list[str]:
+        raw = self._tell("return name of every window")
+        return [t.strip() for t in raw.split(",")] if raw else []
+
+    def window_frame(self, title: str) -> tuple[int, int, int, int]:
+        q = title.replace('"', '\\"')
+        self._tell(f'perform action "AXRaise" of window "{q}"')
+        pos = self._tell(f'return position of window "{q}"')
+        size = self._tell(f'return size of window "{q}"')
+        x, y = (int(v) for v in pos.split(", "))
+        w, h = (int(v) for v in size.split(", "))
+        return x, y, w, h
+
+    def menu_item(self, item: Any) -> tuple[bool, str | None]:
+        # Menu contents depend on the frontmost window, and a menu item that is
+        # not there raises rather than returning empty — so absence has to be
+        # caught rather than tested.
+        try:
+            v = self._tell(f'return value of attribute "AXMenuItemMarkChar" of {item}')
+        except SimulatorError:
+            return False, None
+        return True, (None if v in ("", "missing value") else v)
+
+    def menu_click(self, item: Any) -> bool:
+        try:
+            self._tell(f"click {item}")
+            return True
+        except SimulatorError:
+            return False
 
     def select(self, sim: Simulator) -> None:
         # Simulator opens a window per booted device by itself; it can just be
@@ -328,14 +394,16 @@ class _SimulatorApp(_Host):
 
 
 class _DeviceHub(_Host):
-    """Xcode 27 and later."""
+    """Xcode 27 and later, driven through the accessibility API by pid.
+
+    Not through System Events: on macOS 27.0 it lists Device Hub with a unix
+    id of 0, no windows and no menu bar, under either of the app's names, and
+    the AX API reached by pid sees all three. See `sim/ax.py`.
+    """
 
     proc = "DeviceHub"
-    keyboard_item = (
-        'menu item "Simulate Hardware Keyboard" of menu 1 of menu '
-        'item "Keyboard" of menu 1 of menu bar item "Device" of '
-        "menu bar 1"
-    )
+    keyboard_item = ("Device", "Keyboard", "Simulate Hardware Keyboard")
+    HOME = ("Controls", "Home")
     # Offsets from the window's top-left corner. Nothing in the sidebar reaches
     # the accessibility tree — the split view reports zero children, so there is
     # no row to name and no field to address — which leaves position as the only
@@ -349,6 +417,60 @@ class _DeviceHub(_Host):
     def __init__(self, app: Path) -> None:
         super().__init__(app)
         self._measured: dict[tuple[tuple[int, int, int, int], tuple[int, int]], tuple[float, float, float]] = {}
+
+    # -- the app, through the accessibility tree -----------------------
+    def _app(self) -> ax.App:
+        app = ax.App.running(self.app)
+        if app is None:
+            raise SimulatorError("Device Hub is not running")
+        return app
+
+    def launch(self) -> None:
+        # `open` returns before the app has a window, and a Device Hub that was
+        # left running with its window closed gets no new one from a plain
+        # `open`; the window is what everything below addresses, so wait for it.
+        _run("open", "-a", str(self.app))
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            app = ax.App.running(self.app)
+            if app is not None and app.windows():
+                return
+            time.sleep(1.0)
+        raise SimulatorError("Device Hub launched but never showed a window")
+
+    def activate(self) -> None:
+        self._app().activate()
+
+    def front_title(self) -> str:
+        return self._app().front_title()
+
+    def window_titles(self) -> list[str]:
+        return [title for title, _w in self._app().windows()]
+
+    def _window(self, title: str) -> Any:
+        # A device can be popped out into a window of its own, which carries
+        # the same title as the main window showing it. The main window is the
+        # one with the sidebar, and the larger of the two.
+        app = self._app()
+        matches = [w for t, w in app.windows() if t == title]
+        if not matches:
+            raise SimulatorError(f"no Device Hub window titled {title!r}")
+        return max(matches, key=lambda w: app.frame(w)[2] * app.frame(w)[3])
+
+    def window_frame(self, title: str) -> tuple[int, int, int, int]:
+        window = self._window(title)
+        ax.raise_window(window)
+        return ax.App.frame(window)
+
+    def menu_item(self, item: Any) -> tuple[bool, str | None]:
+        element = self._app().menu_item(item)
+        if element is None:
+            return False, None
+        return True, ax.App.mark(element)
+
+    def menu_click(self, item: Any) -> bool:
+        element = self._app().menu_item(item)
+        return element is not None and ax.press(element)
 
     # -- picking the device --------------------------------------------
     def select(self, sim: Simulator) -> None:
@@ -366,8 +488,15 @@ class _DeviceHub(_Host):
         self.activate()
         time.sleep(1.0)
         wx, wy, _, _ = self._frame()
+        # Click, Escape, click again. Escape clears whatever the field holds,
+        # but on an empty field it moves focus to the "+" button instead —
+        # and the name typed next then opens that button's menu and picks an
+        # entry by its letters (measured on macOS 27.0: it landed on "Apple
+        # TV…" and opened the New Simulator sheet). The second click puts the
+        # focus back on the now-empty field either way.
         _mouse_click(wx + self.SEARCH_FIELD[0], wy + self.SEARCH_FIELD[1], settle=0.4)
         _press_escape()
+        _mouse_click(wx + self.SEARCH_FIELD[0], wy + self.SEARCH_FIELD[1], settle=0.4)
         _type_mac(name)
         time.sleep(1.2)
         for row in range(self.ROWS_TO_TRY):
@@ -379,27 +508,22 @@ class _DeviceHub(_Host):
         )
 
     def _title(self) -> str:
-        try:
-            return _osa(f'tell application "System Events" to tell process "{self.proc}" to return name of window 1')
-        except SimulatorError:
-            return ""
+        return self.front_title()
 
     def _shows(self, name: str, version: str) -> bool:
         return _title_is(self._title(), name, version)
 
     def _frame(self) -> tuple[int, int, int, int]:
-        pos = _osa(f'tell application "System Events" to tell process "{self.proc}" to return position of window 1')
-        size = _osa(f'tell application "System Events" to tell process "{self.proc}" to return size of window 1')
-        x, y = (int(v) for v in pos.split(", "))
-        w, h = (int(v) for v in size.split(", "))
-        return x, y, w, h
+        """The main window — the one with the sidebar — which is the largest."""
+        app = self._app()
+        windows = [w for _t, w in app.windows()]
+        if not windows:
+            raise SimulatorError("Device Hub has no window")
+        return app.frame(max(windows, key=lambda w: app.frame(w)[2] * app.frame(w)[3]))
 
     def press_home(self, sim: Simulator) -> None:
-        _osa(
-            'tell application "System Events" to tell process '
-            f'"{self.proc}" to click menu item "Home" of menu 1 of '
-            'menu bar item "Controls" of menu bar 1'
-        )
+        if not self.menu_click(self.HOME):
+            raise SimulatorError("no Home item in Device Hub's Controls menu")
         time.sleep(1.5)
 
     # -- where the screen is -------------------------------------------
@@ -613,31 +737,14 @@ class Simulator:
 
     # -- window geometry ------------------------------------------------
     @staticmethod
-    def menu_item(item: str | None) -> tuple[bool, str | None]:
-        """(exists, mark_char) for a menu item; (False, None) when it is absent.
-
-        Menu contents depend on the frontmost window, and a menu item that is
-        not there raises rather than returning empty — so absence has to be
-        caught rather than tested.
-        """
-        try:
-            v = _osa(
-                'tell application "System Events" to tell process '
-                f'"{host().proc}" to return value of attribute '
-                f'"AXMenuItemMarkChar" of {item}'
-            )
-        except SimulatorError:
-            return False, None
-        return True, (None if v in ("", "missing value") else v)
+    def menu_item(item: Any) -> tuple[bool, str | None]:
+        """(exists, mark_char) for a menu item of the host app; (False, None) when it is absent."""
+        return host().menu_item(item)
 
     @staticmethod
-    def menu_click(item: str | None) -> bool:
-        """Click a menu item. False when this window's menu has no such item."""
-        try:
-            _osa(f'tell application "System Events" to tell process "{host().proc}" to click {item}')
-            return True
-        except SimulatorError:
-            return False
+    def menu_click(item: Any) -> bool:
+        """Click a menu item of the host app. False when this window's menu has no such item."""
+        return host().menu_click(item)
 
     def focus_window(self, timeout: int = 20) -> str:
         """Make this device's window frontmost, and confirm it got there.
@@ -651,12 +758,7 @@ class Simulator:
         deadline = time.time() + timeout
         while time.time() < deadline:
             self.window_rect()  # matches by title, and AXRaises it
-            try:
-                front = _osa(
-                    f'tell application "System Events" to tell process "{host().proc}" to return name of window 1'
-                )
-            except SimulatorError:
-                front = ""
+            front = host().front_title()
             if _title_is(front, name):
                 return front
             time.sleep(0.5)
@@ -698,26 +800,13 @@ class Simulator:
         the wrong device, or off-screen entirely. Match the title instead.
         """
         name, version = self.device_label()
-        raw = _osa(f'tell application "System Events" to tell process "{host().proc}" to return name of every window')
-        titles = [t.strip() for t in raw.split(",")] if raw else []
+        titles = host().window_titles()
         match = next((t for t in titles if _title_is(t, name, version)), None)
         if match is None:
             match = next((t for t in titles if _title_is(t, name)), None)
         if match is None:
             raise SimulatorError(f"no {host().proc} window for {name} ({version}); saw {titles}")
-
-        q = match.replace('"', '\\"')
-        _osa(
-            f'tell application "System Events" to tell process "{host().proc}" '
-            f'to perform action "AXRaise" of window "{q}"'
-        )
-        pos = _osa(
-            f'tell application "System Events" to tell process "{host().proc}" to return position of window "{q}"'
-        )
-        size = _osa(f'tell application "System Events" to tell process "{host().proc}" to return size of window "{q}"')
-        x, y = (int(v) for v in pos.split(", "))
-        w, h = (int(v) for v in size.split(", "))
-        return x, y, w, h
+        return host().window_frame(match)
 
     def _mapping(self, device_size: tuple[int, int]) -> tuple[float, float, float]:
         """(origin_x, origin_y, screen points per device pixel)."""
