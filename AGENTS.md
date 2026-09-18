@@ -13,7 +13,9 @@ src/
     checks.py            # structural checks that run before the validator
     toolchain.py         # validate(), sign(): wrappers over the plugin's CLIs
     build.py             # Shortcut, build_all()
-    publisher.py         # share_links_shortcut()
+    publisher.py         # share_links_shortcut(), links_from_markup()
+    library.py           # read_library(): a Shortcuts.sqlite read as installed copies, failing closed
+    records.py           # check_record(): a minted iCloud link against its build, with no device
     types.py             # OnStep
     sim/
       harness.py         # Simulator: boot, install, run, tap, type, read state
