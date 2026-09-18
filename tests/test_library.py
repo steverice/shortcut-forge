@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from shortcut_forge_lib.library import Expected, expected_builds, numbered_base, read_library
+from shortcut_forge_lib.library import Expected, LibraryError, expected_builds, numbered_base, read_library
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -116,8 +116,16 @@ def test_the_prefix_limits_what_is_read(tmp_path):
 
 
 def test_a_missing_database_raises_rather_than_reading_empty(tmp_path):
-    with pytest.raises(sqlite3.OperationalError):
+    with pytest.raises(LibraryError):
         read_library(tmp_path / "nowhere.sqlite")
+
+
+def test_a_database_that_is_not_a_shortcuts_library_raises(tmp_path):
+    other = tmp_path / "other.sqlite"
+    sqlite3.connect(other).execute("CREATE TABLE unrelated (x)").connection.close()
+
+    with pytest.raises(LibraryError, match="Shortcuts library"):
+        read_library(other)
 
 
 def test_expected_builds_reads_actions_and_questions(tmp_path):

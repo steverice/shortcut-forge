@@ -126,20 +126,27 @@ def read_library(database: Path | str, prefix: str = "") -> list[Installed]:
     fixed for. Tombstoned rows are rare in practice — measured 2026-09-17, a
     Replace duplicate is not tombstoned and a delete leaves no row at all.
 
+    `prefix` goes to SQL `LIKE`, so it matches ASCII letters without regard to
+    case, and a `%` or `_` in it is a wildcard.
+
     Opened read-only through a URI, so a running Shortcuts.app is neither
-    disturbed nor able to disturb the read. A missing file raises
-    `sqlite3.OperationalError` rather than reading as an empty library.
+    disturbed nor able to disturb the read. A missing file, or one that is not
+    a Shortcuts library, raises `LibraryError` rather than reading as an empty
+    library.
     """
-    con = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
     try:
-        rows = con.execute(
-            "SELECT ZSHORTCUT.ZNAME, ZSHORTCUT.ZTOMBSTONED, ZSHORTCUT.ZIMPORTQUESTIONSDATA, ZSHORTCUTACTIONS.ZDATA "
-            "FROM ZSHORTCUT LEFT JOIN ZSHORTCUTACTIONS ON ZSHORTCUTACTIONS.Z_PK = ZSHORTCUT.ZACTIONS "
-            "WHERE ZSHORTCUT.ZNAME LIKE ? ORDER BY ZSHORTCUT.ZNAME",
-            (f"{prefix}%",),
-        ).fetchall()
-    finally:
-        con.close()
+        con = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+        try:
+            rows = con.execute(
+                "SELECT ZSHORTCUT.ZNAME, ZSHORTCUT.ZTOMBSTONED, ZSHORTCUT.ZIMPORTQUESTIONSDATA, ZSHORTCUTACTIONS.ZDATA "
+                "FROM ZSHORTCUT LEFT JOIN ZSHORTCUTACTIONS ON ZSHORTCUTACTIONS.Z_PK = ZSHORTCUT.ZACTIONS "
+                "WHERE ZSHORTCUT.ZNAME LIKE ? ORDER BY ZSHORTCUT.ZNAME",
+                (f"{prefix}%",),
+            ).fetchall()
+        finally:
+            con.close()
+    except sqlite3.DatabaseError as exc:
+        raise LibraryError(f"could not read {database} as a Shortcuts library: {exc}") from exc
 
     found = []
     for name, tombstoned, questions, actions in rows:
