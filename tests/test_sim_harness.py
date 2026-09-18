@@ -129,3 +129,33 @@ def test_host_attribute_is_lazy(monkeypatch):
     assert harness.HOST == "detected"
     with pytest.raises(AttributeError):
         _ = harness.no_such_name
+
+
+def _fake_simctl(monkeypatch, reads: list[str]) -> list[tuple[str, ...]]:
+    """Every command `set_pasteboard` runs, with `pbpaste` answering from `reads` in turn."""
+    calls: list[tuple[str, ...]] = []
+
+    def run(*args: str, check: bool = True, **kw: object) -> object:
+        calls.append(args)
+        out = reads.pop(0) if args[-2:-1] == ("pbpaste",) else ""
+        return type("Done", (), {"stdout": out, "returncode": 0})()
+
+    monkeypatch.setattr(harness, "_run", run)
+    monkeypatch.setattr(harness.time, "sleep", lambda _s: None)
+    return calls
+
+
+def test_set_pasteboard_retries_until_the_read_back_agrees(monkeypatch):
+    calls = _fake_simctl(monkeypatch, ["the previous value", "123456"])
+
+    Simulator("UDID").set_pasteboard("123456")
+
+    assert [c for c in calls if c[0] == "pbcopy"] == [("pbcopy",), ("pbcopy",)]
+    assert ("xcrun", "simctl", "pbsync", "host", "UDID") in calls
+
+
+def test_set_pasteboard_refuses_a_value_that_never_lands(monkeypatch):
+    _fake_simctl(monkeypatch, ["stale"] * 3)
+
+    with pytest.raises(harness.SimulatorError, match="sandboxed"):
+        Simulator("UDID").set_pasteboard("123456", attempts=3)

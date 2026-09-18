@@ -588,6 +588,29 @@ class Simulator:
     def terminate_shortcuts(self) -> None:
         _run("xcrun", "simctl", "terminate", self.udid, "com.apple.shortcuts", check=False)
 
+    def set_pasteboard(self, text: str, *, attempts: int = 6) -> None:
+        """Put `text` on the device's pasteboard, and confirm it landed.
+
+        `simctl pbcopy` reports success and copies nothing under Xcode 27, so
+        the text goes onto the Mac's pasteboard and `simctl pbsync` carries it
+        across — which overwrites the Mac's pasteboard; saving and restoring
+        it is the caller's business. The sync sometimes lags a beat and the
+        read-back shows the previous value, so it is repeated until the two
+        agree. A sandboxed shell also reports success and copies nothing,
+        which is why the read-back decides. Moved from brightwheel-checkin's
+        integration suite, where the clipboard sign-in tests depend on it.
+        """
+        got = None
+        for _ in range(attempts):
+            _run("pbcopy", input=text)
+            _run("xcrun", "simctl", "pbsync", "host", self.udid)
+            time.sleep(0.5)
+            got = _run("xcrun", "simctl", "pbpaste", self.udid, check=False).stdout
+            if got == text:
+                return
+            time.sleep(1.5)
+        raise SimulatorError(f"the device pasteboard reads {got!r} after copying {text!r}; is the shell sandboxed?")
+
     # -- window geometry ------------------------------------------------
     @staticmethod
     def menu_item(item: str | None) -> tuple[bool, str | None]:
