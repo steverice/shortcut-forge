@@ -89,7 +89,9 @@ Per the `project-conventions` skill's python layer: full type annotations,
 handling, `Path` for paths, long-form CLI flags in every subprocess call.
 Lint ignores in `pyproject.toml` are `S603`/`S607` (every subprocess call passes
 a fixed argv to a tool found by name) and, for tests only, `S101` and the usual
-test relaxations. Do not add more without raising it.
+test relaxations. Do not add more without raising it. One inline waiver exists, raised
+when it was added: `# noqa: S310` on the only `urlopen`, in `records.py`, whose URL
+`_https()` has just refused unless it is `https://`.
 
 ## Testing
 

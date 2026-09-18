@@ -48,9 +48,17 @@ class RecordError(RuntimeError):
     """The link's record or its plist could not be fetched or read."""
 
 
+def _https(url: str, what: str) -> str:
+    """`url`, if it is https. A record names its own download URL, so nothing else may be opened."""
+    if not url.startswith("https://"):
+        raise RecordError(f"{what} is not an https URL: {url!r}")
+    return url
+
+
 def _urlopen(url: str) -> bytes:
     try:
-        with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 - https URLs built above
+        # S310 waived: `_https` has just refused every scheme but https://.
+        with urllib.request.urlopen(_https(url, "the URL to fetch"), timeout=30) as response:  # noqa: S310
             return response.read()
     except (urllib.error.URLError, TimeoutError) as exc:
         raise RecordError(f"could not fetch {url}: {exc}") from exc
@@ -87,6 +95,9 @@ def fetch_record(link: str, *, fetch: Fetch = _urlopen) -> Record:
         name = fields["name"]["value"]
     except (ValueError, KeyError, TypeError) as exc:
         raise RecordError(f"the record for {link} is not in the expected shape: {exc!r}") from exc
+    # The download URL comes from the record, not from us, so it is checked before
+    # any fetcher sees it, including one a test passes in.
+    url = _https(url, f"the download URL in the record for {link}")
     try:
         plist = plistlib.loads(fetch(url))
     except (plistlib.InvalidFileException, ValueError) as exc:

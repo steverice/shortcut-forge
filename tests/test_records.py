@@ -127,3 +127,19 @@ def test_a_record_in_another_shape_raises():
 
     with pytest.raises(RecordError):
         fetch_record(LINK, fetch=served.__getitem__)
+
+
+@pytest.mark.parametrize(
+    "download", ["file:///etc/passwd", "http://cvws.icloud-content.com/B/x", "ftp://example.com/x"]
+)
+def test_a_download_url_that_is_not_https_is_refused_before_it_is_fetched(download):
+    record = {"fields": {"name": {"value": "Target"}, "shortcut": {"value": {"downloadURL": download}}}}
+    fetched: list[str] = []
+
+    def fetch(url: str) -> bytes:
+        fetched.append(url)
+        return json.dumps(record).encode()
+
+    with pytest.raises(RecordError, match="not an https URL"):
+        fetch_record(LINK, fetch=fetch)
+    assert fetched == [RECORDS + RID]
