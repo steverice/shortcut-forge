@@ -558,10 +558,26 @@ working guest logs. Note the denominator too — 68 attempts across a day is not
 busy loop, so a five-minute window on an idle guest shows zero of everything and
 looks like the fault is absent.
 
-**It is macOS 27, not this rig.** A second guest on this host, built by a
-different implementation with a different provisioning path and first-boot
-sequence, reproduces it exactly: 106 attempts, 106 failures, 0 successes, both
-zeros exact, on a comparable denominator. Independently, a Mac admin hit the same
+**It is macOS 27, measured on this host.** A macOS 26.6.2 guest (build 25G83),
+created from an IPSW by the same `tart create` on the same Mac, registers on its
+first attempt:
+
+| guest | `attempting to fetch BAA certs` | `obtained BAA certs` |
+|---|---|---|
+| macOS 27.0, this project's bake | 68 | **0** |
+| macOS 27.0, another rig's bake | 106 | **0** |
+| macOS 26.6.2 | 2 | **2** |
+
+**The attempt count is not a neutral denominator — it is a symptom.** A guest
+that registers attempts twice and stops. A guest that cannot retries: 68 across a
+day here, 106 on the other rig. So a healthy reading is *small and equal*, and a
+large attempt count is itself the fault rather than a reassuring sample size.
+Keep counting attempts, because a zero on a guest that has never tried still
+means nothing — but read a big number as bad news, not as confidence.
+
+A second macOS 27 guest on this host, built by a different implementation with a
+different provisioning path and first-boot sequence, reproduces the failure
+exactly: 106 attempts, 106 failures, 0 successes, both zeros exact. Independently, a Mac admin hit the same
 thing from the MDM side and published the comparison
 ([Der Flounder, 2026-09-15](https://derflounder.wordpress.com/2026/09/15/enrolling-macos-golden-gate-27-0-0-virtual-machines-with-mdm-servers-does-not-work-correctly/)):
 macOS 27.0 and 26.6.2 log the *same first eight lines* and diverge at exactly one
@@ -584,17 +600,19 @@ give it a minute, and count — the denominator first, because a zero means
 nothing until you know the guest has tried:
 
 ```sh
-# 1. Did it even attempt? Below ~5 on a freshly booted guest, wait longer.
+# 1. Did it attempt at all? Zero means it has not spoken yet, so wait.
 log show --last 30m --predicate 'process == "apsd"' --style compact \
   | grep -c 'attempting to fetch BAA certs'
 
-# 2. Did any attempt succeed? Above zero means fixed.
+# 2. Did any attempt succeed? Fixed looks like a small number equal to (1).
 log show --last 30m --predicate 'process == "apsd"' --style compact \
   | grep -c 'obtained BAA certs'
 
 # 3. A registered guest also holds a connection here.
 netstat -an | grep 5223
 ```
+
+A fixed guest reads 2 and 2. A broken one reads a large number and 0.
 
 Run this on a guest that has just booted: `apsd` retries hard at startup — 8
 attempts inside the first 40 seconds — and then backs off to about 68 across a
