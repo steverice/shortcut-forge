@@ -515,6 +515,49 @@ stuck.
 `shortcuts run --output-path -` exists on macOS 27 and is the supported way to
 get a shortcut's result without the clipboard. Untested past the consent prompt.
 
+**Show Result blocks `shortcuts run` on every run, not only the first.**
+Measured 2026-09-18 in a throwaway clone with two signed probes that differed
+only in their last action: with every permission already granted, the Show
+Result probe was still waiting on its Cancel / Done sheet 30 seconds into its
+second run, while the probe ending in a notification returned in under a
+second, exit 0, clipboard set. A publisher meant to run headless therefore ends
+in a notification, not Show Result; the consumer that hit this made that swap
+on its side. Its message still reaches stdout either way.
+
+**Three consent prompts, each per shortcut on first use, each blocking the
+run until answered:**
+
+> Allow "<name>" to copy to the clipboard?  ·  Don't Allow / Allow
+>
+> Allow "<name>" to display notifications?  ·  Don't Allow / Allow
+>
+> Allow "<name>" to output 1 text item?  ·  Don't Allow / Allow Once / Always Allow
+
+The third comes from Show Result under the CLI. Because they are per shortcut,
+a **replaced publisher re-asks** everything the old one had been allowed, so the
+first mint after swapping the base's publisher answers the clipboard and
+notification prompts again, and presumably the iCloud-link consent; the
+clipboard and link ones only appear on a run that actually mints, so a dry run
+cannot prime them.
+
+**Two-button consent sheets need their own calibration.** The gray-button
+finder missed the two-button sheet twice: once it sat over a System Settings
+window, where Don't Allow is nearly invisible, and once over the Shortcuts
+window, where the blue-button finder matched the blurred strips of blue tiles
+under the sheet instead, a false positive. Both times the buttons were at
+x 411 and x 612, 190 px wide. The table below was measured on three-button
+sheets and does not cover this shape.
+
+**The `killall` above also quits the Shortcuts app**, which changes what the
+next sheet sits over: afterward the frontmost app was Finder with a restored
+System Settings window, which is the backdrop that hid Don't Allow. `open -a
+Shortcuts` after the `killall` restores a known backdrop.
+
+One loose end: a fresh publisher build is 99 actions, while the base's copy
+reads 100 in the gate, so the base holds a publisher from an older build or an
+older library revision. It minted three good links regardless, and nobody has
+looked at which action differs.
+
 ## iCloud in a guest: it works on 26, and cannot work on 27
 
 Measured 2026-09-17. **Minting works end to end on a macOS 26.6.2 guest.** The
