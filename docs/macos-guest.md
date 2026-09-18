@@ -957,6 +957,66 @@ turned off in the base (Settings > General > iCloud Sync). Whether a guest mints
 with sync off is what the v1.5.0 run measures; the operator's Mac minted two
 earlier releases with it off.
 
+## Minting from a clone, end to end
+
+Measured 2026-09-18, the same day as the base preparation above, on a clone of
+that base. Nobody touched the screen. Three live links came back, every one
+passed a device-free comparison against the build it was minted from, and the
+clone was shut down from inside and deleted. Nine things, in the order they
+were hit.
+
+**A clone of the prepared base reaches the desktop by itself.** The console
+owner was the account about 30 seconds after SSH answered, `WFCloudKitSyncEnabled`
+read 0 in the clone, `brctl status` showed 24 containers, and `tart`'s machine
+id was identical for base and clone.
+
+**Setup questions survive a synthesized import on macOS 26.6.2.** The largest
+target (339 actions, 3 questions) was imported by VNC clicks and landed with 3
+of 3 questions, all unanswered, read from the database; the link minted from it
+carries all 3 with matching `ActionIndex`, `ParameterKey` and `Category`. Open
+question 8 below is answered.
+
+**The import flow, measured.** The file went in as base64 over SSH (checksums
+compared), was opened with `open`, and after 6 seconds the blue-button finder
+from the 09-17 probe located *Add Shortcut* on all three sheets, at the same
+box on both no-question builds. A build with questions shows "Add Shortcut…"
+with an ellipsis, then a separate "<name> Setup" window with the fields and a
+Cancel / Add Shortcut row at the bottom; the finder found that button too.
+Leaving the fields empty and clicking it keeps the questions. No consent
+prompts appeared on import.
+
+**A WAL-less copy fails the gate closed, not open.** The gate passed on the raw
+triple (`.sqlite` + `-wal` + `-shm`) and on an in-guest
+`sqlite3 <db> ".backup /tmp/x"`, both reading four shortcuts with the largest
+at 339 actions, 3 questions, 0 answered. The main file alone read zero targets,
+so the gate refused with "missing from the library" three times. `.backup` is
+the simpler thing for a rig to do: one consistent file.
+
+**The publisher raised no consent prompts.** The Always Allow answers given on
+the base on 09-17 persisted and carried into the clone, so the gray-button
+consent finder was not exercised on this run.
+
+**`shortcuts run` blocks on a shortcut's final alert.** The publisher ends in an
+alert (its done message, Cancel / Done). Its text reached stdout, but the run
+did not return until Done was clicked: started 15:06:58, returned 15:07:51,
+right after the click. The links were already on the pasteboard, and `pbpaste`
+over SSH returned the exact markup. A headless rig either clicks Done (a blue
+default button the finder would find) or the publisher stops ending on a
+blocking alert.
+
+**Do not hand links over through the host clipboard.** The consumer's page
+updater reads the URLs from stdin in page order, so they were piped in rather
+than overwriting the operator's pasteboard. A rig's output contract is name to
+URL, nothing on the host clipboard.
+
+**Records are fetchable at once.** All three links resolved through the records
+API and passed within about a minute of minting.
+
+**What it cost.** Preparing the base (boot, kcpassword, sharing, shutdown,
+copy-on-write backup, TCC write, boot, three deletes, sync off, shutdown) took
+about 30 minutes, most of it the VNC quirks above. Clone, boot, three imports,
+gate, publish, verify and delete took about 12 minutes.
+
 ## Open questions
 
 Written down so nobody assumes an answer. Each is cheap once a guest exists.
@@ -1005,11 +1065,13 @@ Written down so nobody assumes an answer. Each is cheap once a guest exists.
    Neither account tested could answer it: one was refused as an unsupported
    device before it got that far, the other had ADP and could never become ready.
    See "iCloud in a guest".
-8. **Do setup questions survive a synthesized import?** `docs/simulator-harness.md`
-   records a link that arrived with zero import questions where its siblings had
-   three, the one difference being that its clicks were synthesized rather than
-   human. Every import here is synthesized. An imported copy that lost its
-   questions installs in one tap and leaves its credentials unset, with no error.
+8. ~~**Do setup questions survive a synthesized import?**~~ **Answered on
+   macOS 26.6.2, 2026-09-18: yes.** A 3-question build imported by VNC clicks
+   landed with all 3, read from the database, and the link minted from it
+   carries all 3 with matching `ActionIndex`, `ParameterKey` and `Category`
+   ("Minting from a clone, end to end" above). The zero-question link that
+   raised this question, recorded in `docs/simulator-harness.md`, remains
+   unexplained, and every link still gets checked rather than trusted.
 
 ## Verifying a screen actually rendered
 
