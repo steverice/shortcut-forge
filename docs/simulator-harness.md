@@ -95,6 +95,11 @@ Someone else measured the same thing from a different codebase
 "Device Hub exposes zero accessibility attributes. Finder, as a control, exposes
 20"), so this is the app, not this Mac.
 
+Re-measured 2026-09-18 on Xcode 27.2 beta 1 (`27B5019j`): the same. Its Device
+Hub, frontmost, reports zero windows, no menu bar and zero UI elements under
+both process names, while the window server lists its two windows. Nothing in
+the 27.2 beta notes mentions accessibility, and nothing changed.
+
 There is no fallback host. `Xcode.app/Contents/Developer/Applications` — where
 `Simulator.app` lived — does not exist in Xcode 27, nothing named Simulator.app
 is on disk, and LaunchServices has no registration for it, so `_detect_host()`
