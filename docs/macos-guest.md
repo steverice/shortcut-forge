@@ -528,13 +528,13 @@ timestamps a minute old; the three real release builds imported; and the real
 publisher, run over SSH, minted three live links:
 
 ```
-$ shortcuts run "Brightwheel Share Links"       # exit 0
-Copied three links. Now run: uv run python tools/verify_links.py --clipboard --erase
+$ shortcuts run "<publisher>"                   # exit 0
+<the publisher's own done message, on stdout>
 
 $ pbpaste
-<li><a href="https://www.icloud.com/shortcuts/…">Brightwheel Attendance</a></li>
-<li><a href="https://www.icloud.com/shortcuts/…">Brightwheel Check In</a></li>
-<li><a href="https://www.icloud.com/shortcuts/…">Brightwheel Check Out</a></li>
+<li><a href="https://www.icloud.com/shortcuts/…">First</a></li>
+<li><a href="https://www.icloud.com/shortcuts/…">Second</a></li>
+<li><a href="https://www.icloud.com/shortcuts/…">Third</a></li>
 ```
 
 Three things fall out of that transcript, each of which had been an open
@@ -544,22 +544,24 @@ message is readable without the clipboard at all. And the consent sheet needed
 answering by hand only because this guest had no Screen Sharing; the blessing
 would have let the framebuffer matcher do it.
 
-**A 27-built shortcut survives a 26 library.** This was the risk that pinned the
-guest to macOS 27 — the Brightwheel shortcuts need Store Content and the live
-`Scan Code`, and an action silently dropped on import is the corruption class
-this document exists to catalog. Measured by importing the real signed builds and
-diffing the guest's own library database against `dist/*.xml`, the same
-comparison `sim.links.check_link` makes on a simulator:
+**A shortcut built for macOS 27 survives a 26 library.** This is the risk that
+argued for pinning the guest to 27 at all: a consumer whose shortcuts use
+27-only actions — Store Content and the live `Scan Code` — would be importing
+them into an older library, and an action silently dropped on import is the
+corruption class this document exists to catalog. Measured by importing three
+real signed builds and diffing the guest's own library database against the XML
+they were built from, the same comparison `sim.links.check_link` makes on a
+simulator:
 
-| shortcut | actions built → installed | import questions built → installed |
+| built | actions installed | import questions installed |
 |---|---|---|
-| Brightwheel Attendance | 317 → 317 | 3 → 3 |
-| Brightwheel Check In | 17 → 17 | 0 → 0 |
-| Brightwheel Check Out | 17 → 17 | 0 → 0 |
+| 317 actions, 3 questions, uses 27-only actions | 317, in order | 3 |
+| 17 actions, 0 questions | 17, in order | 0 |
+| 17 actions, 0 questions | 17, in order | 0 |
 
-Every identifier in order, and the questions intact. These imports were committed
-by a human click; whether a *synthesized* click preserves questions is still
-open question 8.
+Every identifier in the same order, and the questions intact. These imports were
+committed by a human click; whether a *synthesized* click preserves questions is
+still open question 8.
 
 **The root cause: the guest cannot mint its device identity key.** `apsd` asks
 the Secure Enclave for the key that device activation needs, and the virtual SEP
