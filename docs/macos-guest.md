@@ -607,6 +607,7 @@ first attempt:
 | macOS 27.0, this project's bake | 68 | **0** |
 | macOS 27.0, another rig's bake | 106 | **0** |
 | macOS 26.6.2 | 2 | **2** |
+| macOS 27.2 beta 1 (`26B5086k`), retested 2026-09-18 | 20 | **0** |
 
 **The attempt count is not a neutral denominator — it is a symptom.** A guest
 that registers attempts twice and stops. A guest that cannot retries: 68 across a
@@ -634,6 +635,16 @@ Virtualization.framework lacking an unlocked `login.keychain`, and every VM here
 had been launched from a sandboxed agent shell, so one was started by hand from a
 Terminal in a GUI session with the keychain verified unlocked and `no-timeout`.
 Identical failure. That was the leading theory and it was wrong.
+
+**27.2 beta 1 does not fix it.** Measured 2026-09-18 on a guest baked from
+the `26B5086k` IPSW, in the first 100 seconds after its restart: 20 attempts,
+20 failures, 0 obtained, and nothing on port 5223, with the same
+`Failed to create reference key` / `unable to generate key` error underneath.
+The bake itself got as far as its final proof on that beta and stopped there:
+a beta guest shows the pre-release license sheet at first login, so the desktop
+is covered and the Dock probe click starts whatever is under the sheet rather
+than Safari. The guest is provisioned, blessed and reachable over SSH by then,
+which is all the retest needs, so a proof failure on a beta does not block it.
 
 **Retesting when a 27.x lands is two minutes and needs no human.** Boot a guest,
 give it a minute, and count — the denominator first, because a zero means
