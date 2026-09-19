@@ -20,12 +20,15 @@ first.
 
 ## Simulator.app, or Device Hub
 
-> **This approach stopped working on 2026-09-17, and repairing it is the wrong
-> move.** Device Hub now exposes **no accessibility tree at all** — no windows,
-> no menu bar, under either process name, while frontmost, after a clean
-> relaunch with its preferences deleted. Everything below that reaches the screen
-> through System Events fails at the first call. See "Device Hub has no
-> accessibility tree, and idb is the way out" before spending time here.
+> **Through System Events this stopped working on 2026-09-17. Through the
+> accessibility API addressed by process id it runs again as of 2026-09-18
+> (`sim/ax.py`, branch `devicehub-ax-by-pid`), and idb is the planned end
+> state.** System Events reports Device Hub with a unix id of 0, no windows and
+> no menu bar, under either process name, however it is launched; the same
+> process answers `AXUIElementCreateApplication(pid)` with its windows, frames,
+> menu bar and presses. The sidebar and the device screen are exposed by
+> neither, so taps still go through measured coordinates. See "Device Hub is
+> invisible to System Events, and idb is the way out" before spending time here.
 
 Xcode 27 deleted `Simulator.app` and replaced it with **Device Hub**
 (`Xcode.app/Contents/Applications/DeviceHub.app`, process `DeviceHub`), which
@@ -83,7 +86,7 @@ process has no grant for it. The harness opens files from the repo and from temp
 paths for that reason. `~/Documents` and `~/Downloads` are protected the same
 way and are likely to fail too, though neither has been tried.
 
-### Device Hub has no accessibility tree, and idb is the way out
+### Device Hub is invisible to System Events, and idb is the way out
 
 Measured 2026-09-17. Device Hub is running, visible, not background-only, and
 frontmost, and System Events reports **zero windows and no menu bar** for it —
@@ -95,10 +98,38 @@ Someone else measured the same thing from a different codebase
 "Device Hub exposes zero accessibility attributes. Finder, as a control, exposes
 20"), so this is the app, not this Mac.
 
-Re-measured 2026-09-18 on Xcode 27.2 beta 1 (`27B5019j`): the same. Its Device
-Hub, frontmost, reports zero windows, no menu bar and zero UI elements under
-both process names, while the window server lists its two windows. Nothing in
-the 27.2 beta notes mentions accessibility, and nothing changed.
+Re-measured 2026-09-18 on Xcode 27.2 beta 1 (`27B5019j`): the same through
+System Events. Its Device Hub, frontmost, reports zero windows, no menu bar and
+zero UI elements under both process names, while the window server lists its
+two windows. Nothing in the 27.2 beta notes mentions accessibility.
+
+**Corrected the same day: it is System Events that cannot see Device Hub, not
+the accessibility API.** Measured by another session on macOS 27.0 (`26A428`)
+with Xcode 27.0 (`27A266a`), from an unsandboxed shell with Accessibility
+granted. System Events answered `{unix id 0, 0 windows}` and "Can't get menu
+bar 1" for both process names, after `killall "System Events"`, after every way
+of launching the app, and with only one Device Hub running; `application
+process id <pid>` failed with -1728. `AXUIElementCreateApplication(pid)`, on the
+same process, returned AXTitle "Device Hub", two windows each with an AXTitle
+(`iPhone 17 Pro Max – iOS 27.0`, en dash and version suffix), AXPosition and
+AXSize, the full menu bar, `Controls > Home` pressable (it pressed Home on the
+device), `Device > Keyboard > Simulate Hardware Keyboard` with its check mark
+readable, and a working AXRaise. Three details: `AXFocusedWindow` has an empty
+title, so the front window is the one flagged AXMain in AXWindows; activation
+works through `NSRunningApplication`; and with two Xcodes' Device Hubs running,
+a bundle-id lookup answers with process id -1, so the pid comes from the
+executable path. Still exposed by neither route: the sidebar rows, the search
+field, the device screen, and SwiftUI sheets (the New Simulator sheet has no
+AXSheets entry; Escape closes it). Escape on an *empty* sidebar search field
+moves focus to the "+" button, and the device name typed next opens that menu
+and picks an entry by its letters; the field is clicked again after Escape.
+
+With that route in the harness (`sim/ax.py`, commit `33633a8` on branch
+`devicehub-ax-by-pid`), a consumer's full simulator suite ran green on the iOS
+27.0 simulator: install, consent taps, Ask for Input typing, notification and
+stored-content reads, across three suite subsets and about twenty runs. So the
+System Events harness is repairable, and the "no accessibility tree" heading
+this section carried until then was wrong.
 
 There is no fallback host. `Xcode.app/Contents/Developer/Applications` — where
 `Simulator.app` lived — does not exist in Xcode 27, nothing named Simulator.app
@@ -114,13 +145,17 @@ name *and* version rejects it while name-only matching finds it. Screenshots
 Clicks are posted CGEvents and never needed AX; per XcodeBuildMCP, even Device
 Hub's menus respond to CoreGraphics clicks they will not expose to scripting.
 
-**Why patching it is still the wrong move.** Geometry from the window server
-gets a run as far as tapping, and then the old hazards remain: two Device Hub
-windows overlap, `screencapture -R` captures whatever is in front rather than
-the window you asked for, and there is no `AXRaise` to put the right one on top.
-A patched run reached the import sheet, measured the wrong window, and tapped
-into empty space while reporting no error — the silent-wrong-answer shape this
-document exists to catalog.
+**What the repair does not change, and why idb is still the end state.** The
+by-pid route restores windows, menus and AXRaise, which removes the
+wrong-window hazard that sank the window-server attempt (a patched run on that
+route reached the import sheet, measured the wrong window, and tapped into empty
+space while reporting no error). What it cannot restore is anything under the
+window's chrome: the sidebar is still driven by typed filter and clicks by
+position, the device screen is still measured inside the bezel, taps are still
+posted mouse events that need a visible window and Accessibility permission,
+and buttons are still found by color. idb needs none of that (below), and its
+tree queries name the buttons. The bridge makes today's suite run; the rebuild
+makes it honest.
 
 **Use [idb](https://github.com/facebook/idb) instead.** It injects touches into
 the simulator rather than driving the mouse, so no window, no geometry, no
