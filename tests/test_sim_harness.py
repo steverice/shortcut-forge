@@ -286,6 +286,83 @@ def test_always_allow_is_tried_before_allow(fake_idb):
     assert labels.index("Always Allow") < labels.index("Allow")
 
 
+def test_a_seed_pass_that_resolved_nothing_replaces_the_companion_and_looks_again(fake_idb, monkeypatch):
+    """A companion blind to a dialog's rectangle answers every point in it with the not-there sentence.
+
+    Measured 2026-09-20: a companion an hour old saw nothing of an Ask dialog
+    that one ninety seconds old resolved completely, while `idb ui tap` landed
+    on it throughout. A pass in which no probe resolved anything is therefore
+    not an absence, and `clear_prompts` and `prompt_up` — both of which run in
+    the consumer's sub-second poll loop — would otherwise report one and let
+    the run time out behind a consent nothing pressed.
+    """
+    sim = fake_idb("library")
+    dropped: list[str] = []
+    blind = [True]
+
+    def at(self, x, y):
+        return None if blind[0] else button("Allow")
+
+    def drop(self):
+        blind[0] = False
+        dropped.append("dropped")
+
+    monkeypatch.setattr(Simulator, "at", at)
+    monkeypatch.setattr(Simulator, "drop_companion", drop)
+    found = sim.find_button("Allow")
+    assert found is not None
+    assert found.label == "Allow"
+    assert dropped == ["dropped"]
+
+
+def test_a_seed_pass_that_resolved_something_keeps_the_companion_it_has(fake_idb, monkeypatch):
+    """Naming anything at a seed is evidence the companion still answers, so the negative stands."""
+    sim = fake_idb("library")
+    dropped: list[str] = []
+    monkeypatch.setattr(Simulator, "at", lambda self, x, y: button("Shortcuts"))
+    monkeypatch.setattr(Simulator, "drop_companion", lambda self: dropped.append("dropped"))
+    assert sim.find_button("Allow") is None
+    assert dropped == []
+
+
+def test_a_companion_this_session_just_replaced_is_taken_at_its_word(fake_idb, monkeypatch):
+    """Without one shared cooldown the poll loop's callers drop each other's companion before it warms up."""
+    sim = fake_idb("library")
+    monkeypatch.setattr(Simulator, "at", lambda self, x, y: None)
+    assert sim.find_button("Allow") is None
+    assert sim.find_button("Allow") is None
+    assert sim.prompt_up() is False
+    drops = [c for c in fake_idb.log() if c.startswith("pkill")]
+    assert len(drops) == 1, f"a negative from a companion this session just made is earned already, saw {drops}"
+
+
+def test_the_replacement_companion_is_warmed_up_before_it_is_asked_anything(fake_idb, monkeypatch):
+    """A fresh companion answers nothing for about four seconds, so asking it inside that window proves nothing.
+
+    Dropping the companion at the top of `run_shortcut` was implemented, passed
+    its unit tests, and produced the worst consumer-gate run of the session,
+    because it put a cold companion in front of the consents.
+    """
+    sim = fake_idb("library")
+    sim.screen_size()  # cached here so its tree read cannot be mistaken for a probe
+    order: list[str] = []
+    monkeypatch.setattr(Simulator, "at", lambda self, x, y: order.append("probe"))
+    monkeypatch.setattr(Simulator, "drop_companion", lambda self: order.append("drop"))
+    monkeypatch.setattr(harness.time, "sleep", lambda s: order.append(f"sleep {s}"))
+    assert sim.find_button("Allow") is None
+    after = order.index("drop")
+    assert order[after : after + 2] == ["drop", f"sleep {harness.COMPANION_WARMUP}"]
+
+
+def test_prompt_up_earns_its_false_the_way_find_button_does(fake_idb, monkeypatch):
+    """The consumer restarts a run on a False here; a run merely waiting on a consent must not qualify."""
+    sim = fake_idb("library")
+    asked: list[tuple[str, ...]] = []
+    monkeypatch.setattr(Simulator, "find_button", lambda self, *labels: asked.append(labels))
+    assert sim.prompt_up() is False
+    assert asked == [("Always Allow", "Allow", "Done", "Cancel", harness.DONT_ALLOW)]
+
+
 def test_a_tree_match_is_confirmed_by_a_hit_test_before_it_is_returned(fake_idb):
     sim = fake_idb("setup-question")
     found = sim.find_button("Add Shortcut")

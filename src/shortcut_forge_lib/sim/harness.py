@@ -128,6 +128,22 @@ ASK_FIELD: tuple[float, float] = (0.500, 0.233)  # (201, 203)
 #: whichever tree `_tree()` returns, so it has to know both names.
 FIELD_TYPES = ("TextField", "TextArea", "TextView")
 
+#: How long a freshly spawned companion answers every hit test with idb's
+#: not-there sentence. About four seconds, measured while writing
+#: `wait_booted`, which waits the same window out before it calls a device
+#: drivable. A negative read inside it establishes nothing, so a companion
+#: this session has just replaced is left alone for this long before it is
+#: asked anything.
+COMPANION_WARMUP = 5.0
+
+#: How long a companion this session replaced is taken at its word.
+#: Replacing one costs the warm-up above plus a probe pass, and a fresh
+#: companion is blind for the first four seconds of its life — dropping one
+#: on every negative is how a run gets *worse*, not better, which was
+#: measured the hard way (see `_second_look`). This bounds the replacements a
+#: poll loop can provoke to one every three quarters of a minute.
+COMPANION_RECHECK_EVERY = 45.0
+
 
 class SimulatorError(RuntimeError):
     pass
@@ -168,6 +184,8 @@ class Simulator:
             self.artifacts.mkdir(parents=True, exist_ok=True)
         self._shot = 0
         self._screen: tuple[int, int] | None = None
+        self._renewed_at: float | None = None
+        """When this session last replaced the companion. None means it never did."""
 
     # -- discovery ------------------------------------------------------
     @classmethod
@@ -360,6 +378,7 @@ class Simulator:
         # to the long-flag rule, not an oversight.
         _run("pkill", "-f", f"idb_companion --udid {self.udid}", check=False)
         _run(IDB, *idb.disconnect_args(self.udid), check=False)
+        self._renewed_at = time.time()
 
     # -- reading the screen ---------------------------------------------
     def elements(self, backend: str = idb.AX, *, match: str | None = None) -> list[idb.Element]:
@@ -445,6 +464,12 @@ class Simulator:
         priming pass worthless. Never *Done*, which would submit an empty
         answer to an Ask dialog. Never *OK*: a run error is dismissed by an
         explicit `press("OK")` so that it is not swallowed here.
+
+        The empty list is `find_button`'s earned negative, not a bare probe
+        pass: a companion that has gone blind to a dialog's rectangle reports
+        no consent in exactly the words an answered one does, and this is the
+        method whose silence lets a run time out behind a consent nothing ever
+        pressed.
         """
         pressed: list[str] = []
         for _ in range(rounds):
@@ -594,9 +619,17 @@ class Simulator:
         the companion and looks once more before saying so. The cost falls
         entirely on the path that was about to report a negative; a dialog that
         is there is found on the first pass and pays nothing.
+
+        The exception is a companion this session replaced moments ago, which
+        is the one companion whose silence is already evidence. `find_button`
+        replaces companions for the same reason, and without a shared cooldown
+        the consumer's poll loop would have the two of them dropping each
+        other's fresh companion faster than either could warm up. The second
+        pass here polls for `COMPANION_WARMUP` seconds and more, so it waits
+        out the blindness of the companion it just made.
         """
         found = self._poll_for_field(timeout)
-        if found is not None:
+        if found is not None or not self._companion_is_suspect():
             return found
         self.drop_companion()
         return self._poll_for_field(min(timeout, 20.0))
@@ -654,21 +687,34 @@ class Simulator:
            own buttons after typing. Without it the harness taps into whatever
            is actually there and reports success.
 
+        The `None` is earned before it is returned. A seed pass that resolved
+        nothing at any point it probed has not established an absence — that is
+        equally what a companion gone blind to a dialog's rectangle answers —
+        and both `clear_prompts` and `prompt_up` run in the consumer's
+        sub-second poll loop, where such a negative reads as "the run raised no
+        prompt" and leaves a consent sitting unanswered until the whole run
+        times out. A pass that resolved something is evidence the companion is
+        still answering, so that negative stands as it is. `_second_look` is
+        what the other kind costs.
+
         A miss costs one hit test per seed for a dialog label, two tree reads
-        for anything else.
+        for anything else, and — for a seed pass that proved nothing — a fresh
+        companion, at most once every `COMPANION_RECHECK_EVERY` seconds.
         """
         dialog = [label for label in labels if label in DIALOG_LABELS]
+        others = [label for label in labels if label not in DIALOG_LABELS]
+        answered = True
         if dialog:
-            found = self._probe_seeds(dialog)
+            found, answered = self._probe_seeds(dialog)
             if found is not None:
                 return found
-        for label in labels:
-            if label in DIALOG_LABELS:
-                continue
+        for label in others:
             found = self._find_in_tree(label)
             if found is not None:
                 return found
-        return None
+        if answered or not self._companion_is_suspect():
+            return None
+        return self._second_look(dialog)
 
     def press(self, *labels: str) -> str:
         """Find one of `labels` and tap it. Returns the label pressed.
@@ -688,17 +734,77 @@ class Simulator:
         return self._tap(found)
 
     def prompt_up(self) -> bool:
-        """Is one of the runner's dialogs up? Seeds only: one pass of hit tests, no tree read."""
-        return self._probe_seeds(["Always Allow", "Allow", "Done", "Cancel", DONT_ALLOW]) is not None
+        """Is one of the runner's dialogs up? Seeds only — every label here is one `SEEDS` carries.
 
-    def _probe_seeds(self, labels: list[str]) -> idb.Element | None:
+        Through `find_button` rather than `_probe_seeds` so that a False is the
+        earned one. The consumer calls this to decide that a run URL was
+        dropped and start the shortcut over; a run that was merely waiting on a
+        consent gets restarted, and the consent is still there afterwards.
+        """
+        return self.find_button("Always Allow", "Allow", "Done", "Cancel", DONT_ALLOW) is not None
+
+    def _probe_seeds(self, labels: list[str]) -> tuple[idb.Element | None, bool]:
+        """Hit-test the seeds for `labels`: what was found, and whether any probe resolved anything.
+
+        The second half of that pair is what makes a negative worth something.
+        A hit test answers with idb's not-there sentence in two opposite cases
+        — nothing is at the point, or the companion has stopped resolving the
+        rectangle a dialog is drawn in — and the sentence is identical. What
+        tells them apart is the rest of the pass: a companion that is still
+        answering names *something* at a seed, the screen under a dialog or a
+        dialog's own dimming view, even when no seed carries the label being
+        looked for. A pass where every probe came back empty has established
+        nothing whatever.
+        """
         w, h = self.screen_size()
+        answered = False
         for label, fx, fy in SEEDS:
             if label not in labels:
                 continue
             seen = self.at(int(w * fx), int(h * fy))
-            if seen is not None and seen.label == label and seen.is_button:
-                return seen
+            if seen is None:
+                continue
+            answered = True
+            if seen.label == label and seen.is_button:
+                return seen, True
+        return None, answered
+
+    def _companion_is_suspect(self) -> bool:
+        """Might the companion's silence be blindness rather than an empty screen?
+
+        False only just after this session replaced it. The registry in
+        `/tmp/idb/state` is keyed by UDID alone and outlives the process it
+        names, so a companion this session merely *found* can be hours old:
+        having never replaced it is exactly as suspect as having replaced it
+        long ago, which is why `None` counts as suspect.
+        """
+        return self._renewed_at is None or time.time() - self._renewed_at >= COMPANION_RECHECK_EVERY
+
+    def _second_look(self, labels: list[str], *, attempts: int = 5) -> idb.Element | None:
+        """Probe `labels` again on a companion this call replaces, because the last pass proved nothing.
+
+        A companion that has been alive a long time stops resolving hit tests
+        inside a runner dialog's rectangle while `idb ui tap` at the very same
+        coordinates still lands. Measured 2026-09-20: a companion an hour old
+        saw nothing of an Ask dialog that one ninety seconds old resolved
+        completely, the field included. Replacing it is the only cure known.
+
+        Replacing it is also the known way to make a run worse. Doing it at the
+        top of `run_shortcut` was implemented, unit-tested green, and produced
+        the worst gate run of the session — because a fresh companion answers
+        nothing for about four seconds and the consents arrive inside that
+        window. So this waits the warm-up out before asking anything, and keeps
+        asking until a pass resolves something rather than handing a cold
+        companion back to a caller that is about to act on its silence. Past
+        that, the silence is as established as this harness can make it.
+        """
+        self.drop_companion()
+        time.sleep(COMPANION_WARMUP)
+        for _ in range(attempts):
+            found, answered = self._probe_seeds(labels)
+            if found is not None or answered:
+                return found
+            time.sleep(1.0)
         return None
 
     def _find_in_tree(self, label: str) -> idb.Element | None:
