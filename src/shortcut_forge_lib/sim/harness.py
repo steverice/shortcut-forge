@@ -1467,14 +1467,32 @@ class Simulator:
         return True
 
     # -- shortcuts ------------------------------------------------------
-    def install(self, path: str | Path, expect_name: str | None = None, timeout: int = 75) -> bool:
-        """Open a .shortcut as a host file URL and confirm the import sheet.
+    def install(
+        self,
+        path: str | Path,
+        expect_name: str | None = None,
+        timeout: int = 75,
+        *,
+        skip_setup: bool = True,
+    ) -> bool:
+        """Open a `.shortcut` as a host file URL and confirm the import sheet.
 
-        The library name comes from the *filename*, not from WFWorkflowName.
+        The library name comes from the *filename*, not from `WFWorkflowName`.
+        Returns True when it installed, False when it was already there.
+
+        With `skip_setup=False` it stops at the setup-question page and returns
+        True as soon as that page's text field is in the tree — before the name
+        is in the library, and without clearing consents — leaving the sheet
+        for `fill` and `confirm`. That is what the canary needs.
+
+        The labels are tried in the order *Skip Setup*, *Add Shortcut*,
+        *Set Up Shortcut*: *Skip Setup* exists only on the question page, and
+        reaching that page means the sheet forced the setup path, where *Add
+        Shortcut* would commit an unanswered question.
         """
         path = Path(path).resolve()
         name = expect_name or path.stem
-        if name in self.library():
+        if skip_setup and name in self.library():
             return False
         url = "file://" + urllib.parse.quote(str(path))
         # Right after a boot the URL can be refused for a few seconds.
@@ -1486,23 +1504,38 @@ class Simulator:
         else:
             raise SimulatorError(f"could not open {path.name}: {r.stderr.strip()}")
 
-        # Wait for the sheet, then keep confirming until the shortcut actually
-        # lands. A single tap is not reliable: the first click on an unfocused
-        # Simulator window sometimes only raises it, and after an erase the
-        # sheet can take several seconds to draw.
         deadline = time.time() + timeout
-        tapped = False
+        if not skip_setup:
+            while time.time() < deadline:
+                if self._field_in_tree() is not None:
+                    return True
+                found = self.find_button("Set Up Shortcut")
+                if found is not None:
+                    self._tap(found)
+                time.sleep(1.5)
+            self.screenshot(f"no-setup-page-{name}.png")
+            raise SimulatorError(f"{name}: no setup question page within {timeout}s; saw {self._labels()}")
+
+        # Keep confirming until the shortcut actually lands. One press is not
+        # enough: after an erase the sheet can take several seconds to draw,
+        # and the import writes through CoreData, so re-reading the library too
+        # eagerly can miss a confirm that did land.
+        pressed = False
         while time.time() < deadline:
             if name in self.library():
+                # Seen once in three imports: after Add Shortcut, Shortcuts
+                # opened the new shortcut's Apple Intelligence description view
+                # instead of returning to the library. Nothing after an install
+                # may assume the library is what is on screen.
+                self.clear_prompts()
                 return True
-            if self.tap_affirmative():
-                tapped = True
-            # The import writes through CoreData; re-reading too eagerly can
-            # miss a confirm that did land, and the sheet for a large shortcut
-            # can still be drawing when the first tap goes out.
-            time.sleep(2.5)
+            found = self.find_button("Skip Setup", "Add Shortcut", "Set Up Shortcut")
+            if found is not None:
+                pressed = True
+                self._tap(found)
+            time.sleep(2.0)
         self.screenshot(f"install-failed-{name}.png")
-        raise SimulatorError(f"{name} did not install{'' if tapped else ' (no Add Shortcut button ever appeared)'}")
+        raise SimulatorError(f"{name} did not install{'' if pressed else ' (no import sheet button ever appeared)'}")
 
     def run_shortcut(self, name: str) -> None:
         url = "shortcuts://run-shortcut?name=" + urllib.parse.quote(name)

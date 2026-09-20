@@ -579,3 +579,39 @@ def test_preparing_a_device_that_is_not_booted_never_opens_device_hub(fake_idb, 
     sim.prepare()
     assert any(c.startswith("xcrun simctl boot") for c in calls)
     assert "wait" in calls
+
+
+def test_install_returns_false_when_the_shortcut_is_already_there(fake_idb, monkeypatch, tmp_path):
+    """The library is keyed by filename, and a second import of the same name silently does nothing.
+
+    Reporting that as an install would tell a caller its build had landed when
+    the device still holds the old one.
+    """
+    sim = fake_idb("library")
+    monkeypatch.setattr(Simulator, "library", lambda self: ["Attendance"])
+    assert sim.install(tmp_path / "Attendance.shortcut") is False
+    assert not fake_idb.log(), "it should not have opened anything"
+
+
+def test_install_stops_at_the_question_page_when_asked_to(fake_idb, monkeypatch, tmp_path):
+    """`skip_setup=False` hands the sheet to `fill` and `confirm`, before the name reaches the library.
+
+    That is the shape the setup canary needs: the answer has to be typed while
+    the sheet is still up, and the shortcut is not installed until it is.
+
+    Only the `xcrun` open is faked here; idb calls fall through to the real
+    `_run` so the fake idb binary on PATH still answers from the fixture.
+    Faking `_run` wholesale (as the first draft of this test did) starves
+    `_field_in_tree()` of every read, since it shares the same `_run`, and the
+    test then spun for the full real-time timeout before failing.
+    """
+    sim = fake_idb("setup-question")
+    real_run = harness._run
+    monkeypatch.setattr(
+        harness,
+        "_run",
+        lambda *args, **kw: (
+            subprocess.CompletedProcess(args, 0, "", "") if args[0] == "xcrun" else real_run(*args, **kw)
+        ),
+    )
+    assert sim.install(tmp_path / "Setup Canary.shortcut", skip_setup=False) is True

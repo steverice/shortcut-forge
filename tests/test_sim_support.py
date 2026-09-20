@@ -10,7 +10,7 @@ import pytest
 
 from shortcut_forge_lib.checks import check_all
 from shortcut_forge_lib.plist import write_xml
-from shortcut_forge_lib.sim import certs, links, probes
+from shortcut_forge_lib.sim import certs, idb, links, probes
 from shortcut_forge_lib.sim.links import LinkError, check_link, install_from_link
 
 # -- probes ---------------------------------------------------------------------
@@ -85,14 +85,20 @@ def test_ensure_certs_makes_a_chain_ios_will_accept(tmp_path):
 
 
 class FakeSim:
-    """Shows no import sheet until the link has been opened `works_on` times."""
+    """Shows no import sheet until the link has been opened `works_on` times.
+
+    `offers` is the label the sheet carries: *Add Shortcut* for a link without
+    setup questions, *Set Up Shortcut* for one with them, which then has to be
+    finished with *Skip Setup* — the only path that keeps the questions.
+    """
 
     udid = "FAKE"
 
-    def __init__(self, works_on=1, installed=(), actions=None, questions=0):
+    def __init__(self, works_on=1, installed=(), actions=None, questions=0, offers="Add Shortcut"):
         self.works_on = works_on
         self.opens = 0
-        self.tapped = False
+        self.offers = offers
+        self.pressed: list[str] = []
         self._installed = list(installed)
         self._actions = actions
         self.questions = questions
@@ -100,12 +106,27 @@ class FakeSim:
     def terminate_shortcuts(self):
         pass
 
-    def blue_buttons(self, img=None):
-        return [(0, 0, 10, 10)] if self.opens >= self.works_on and not self.tapped else []
+    def find_button(self, *labels):
+        for label in labels:
+            if label in self._on_screen():
+                return idb.Element(1, "Button", label, None, idb.Frame(0, 0, 100, 40), ("Button",))
+        return None
 
-    def tap_affirmative(self, img=None):
-        self.tapped = True
-        return True
+    def press(self, *labels):
+        found = self.find_button(*labels)
+        if found is None:
+            raise AssertionError(f"nothing to press among {labels}; on screen: {self._on_screen()}")
+        self.pressed.append(found.label)
+        return found.label
+
+    def _on_screen(self):
+        if self.opens < self.works_on:
+            return ()
+        if not self.pressed:
+            return (self.offers,)
+        if self.pressed == ["Set Up Shortcut"]:
+            return ("Skip Setup", "Add Shortcut")
+        return ()
 
     def library(self):
         return self._installed
@@ -136,7 +157,7 @@ def test_link_that_works_on_the_first_open(fast):
     fast.sim = sim
     install_from_link(sim, "https://www.icloud.com/shortcuts/abc")
     assert sim.opens == 1
-    assert sim.tapped
+    assert sim.pressed == ["Add Shortcut"]
 
 
 def test_link_that_needs_a_second_open(fast):
@@ -145,7 +166,7 @@ def test_link_that_needs_a_second_open(fast):
     fast.sim = sim
     install_from_link(sim, "https://www.icloud.com/shortcuts/abc", timeout=0.05)
     assert sim.opens == 2
-    assert sim.tapped
+    assert sim.pressed == ["Add Shortcut"]
 
 
 def test_link_that_never_shows_a_sheet(fast):
@@ -154,7 +175,19 @@ def test_link_that_never_shows_a_sheet(fast):
     with pytest.raises(LinkError, match="either try"):
         install_from_link(sim, "https://www.icloud.com/shortcuts/abc", timeout=0.05)
     assert sim.opens == 2
-    assert not sim.tapped
+    assert sim.pressed == []
+
+
+def test_a_sheet_with_questions_is_finished_with_skip_setup(fast):
+    """Set Up Shortcut then Skip Setup is the only path that keeps the questions.
+
+    The old finder could not tell the two sheets apart: both drew one blue
+    rectangle, and which one it was got inferred from a second screenshot.
+    """
+    sim = FakeSim(works_on=1, offers="Set Up Shortcut")
+    fast.sim = sim
+    install_from_link(sim, "https://www.icloud.com/shortcuts/abc")
+    assert sim.pressed == ["Set Up Shortcut", "Skip Setup"]
 
 
 def test_check_link_compares_actions_and_questions(fast, tmp_path, monkeypatch, car_greetings):

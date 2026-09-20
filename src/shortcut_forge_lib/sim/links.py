@@ -48,7 +48,8 @@ def install_from_link(sim: Simulator, link: str, *, timeout: float = 45, settle:
     A sheet with questions offers Set Up Shortcut and then needs Skip Setup,
     which is the only way to finish that keeps the questions. One without
     questions installs on the first tap. Both are handled, because which one
-    appears is the thing being measured.
+    appears is the thing being measured — and they are now told apart by label
+    rather than inferred from how many blue rectangles a screenshot had.
 
     The link is opened a second time before giving up. On a freshly erased
     simulator the first open left the home screen showing, and the same link
@@ -62,21 +63,16 @@ def install_from_link(sim: Simulator, link: str, *, timeout: float = 45, settle:
         deadline = time.time() + timeout
         while time.time() < deadline:
             time.sleep(2)
-            if sim.blue_buttons():
+            if sim.find_button("Set Up Shortcut", "Add Shortcut") is not None:
                 break
         else:
             if attempt == 1:
                 continue
             raise LinkError("no import sheet appeared on either try — is the link still live?")
         break
-    sim.tap_affirmative()
-    time.sleep(4)
-    boxes = sim.blue_buttons()
-    if boxes:  # the questions page: Skip Setup sits below the blue button
-        img = sim.image()
-        w, h = img.size
-        _, _, _, y1 = max(boxes, key=lambda b: (b[3], b[2]))
-        sim.tap(w // 2, int(y1 + h * 0.045), device_size=(w, h))
+    if sim.press("Set Up Shortcut", "Add Shortcut") == "Set Up Shortcut":
+        time.sleep(2)
+        sim.press("Skip Setup")
         time.sleep(settle)
 
 
