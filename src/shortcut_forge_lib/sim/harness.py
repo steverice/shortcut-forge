@@ -102,6 +102,17 @@ DIALOG_LABELS = frozenset({"Done", "Cancel", "Allow", "Always Allow", "Allow Onc
 #: 54}}` (Allow Once), `{{23, 615}, {356, 54}}` (Always Allow), all
 #: `com.apple.ShortcutsUI`. *Always Allow* was already in `clear_prompts`'s
 #: default set, so this row alone was the fix.
+#:
+#: That same consent appears at a second position, 207 points higher, when its
+#: title reads "send 1 *Clipboard* item" rather than "send 1 text item" —
+#: measured 2026-09-20 from twelve consecutive gate failures that every one of
+#: them showed at the identical place: `{{23, 275.7}, {356, 54}}` (Don't
+#: Allow), `{{23, 341.7}, {356, 54}}` (Allow Once), `{{23, 407.7}, {356, 54}}`
+#: (Always Allow). The two blue buttons were measured off those screenshots at
+#: 3 px/pt and *Don't Allow* follows from the stack's 66-point pitch, which
+#: both shapes share. These dialogs are neither centered nor anchored to an
+#: edge: the buttons sit wherever the title and body leave them, so a consent
+#: worded differently is another row rather than an offset on this one.
 SEEDS: tuple[tuple[str, float, float], ...] = (
     ("Always Allow", 0.500, 0.665),  # (201, 581) on 402x874 — the output-permission sheet
     ("Allow", 0.729, 0.200),  # (293, 174) — the clipboard consent
@@ -116,6 +127,9 @@ SEEDS: tuple[tuple[str, float, float], ...] = (
     (DONT_ALLOW, 0.500, 0.584),  # (201, 510) — "send 1 text item to localhost", measured 2026-09-20
     ("Allow Once", 0.500, 0.659),  # (201, 576) — "send 1 text item to localhost", measured 2026-09-20
     ("Always Allow", 0.500, 0.735),  # (201, 642) — "send 1 text item to localhost", measured 2026-09-20
+    (DONT_ALLOW, 0.500, 0.346),  # (201, 302) — "send 1 Clipboard item to localhost", measured 2026-09-20
+    ("Allow Once", 0.500, 0.422),  # (201, 368) — "send 1 Clipboard item to localhost", measured 2026-09-20
+    ("Always Allow", 0.500, 0.497),  # (201, 434) — "send 1 Clipboard item to localhost", measured 2026-09-20
 )
 
 #: Where the runner's Ask for Input dialog puts its field.
