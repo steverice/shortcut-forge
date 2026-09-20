@@ -38,3 +38,24 @@ def setup_probe(name: str, *, question: str = "Setup canary — type the digits 
         questions=[import_question(0, "WFTextActionText", question)],
         input_classes=[],
     )
+
+
+def ask_probe(name: str, *, prompt: str = "Ask canary — type the digits shown by the test") -> dict[str, Any]:
+    """A two-action shortcut that raises all three of the runner's dialogs.
+
+    Ask for Input holds the run until someone answers, so the dialog stays up
+    to be measured. Copy to Clipboard makes the answer readable from outside
+    the device, and on a device that has not granted it, raises the clipboard
+    consent. A run started by URL then ends on the output-permission sheet,
+    because the URL runner hands the last action's output back to its caller.
+    One install, three dialogs, which is what the fixture capture needs.
+
+    The prompt asks for digits for the same reason `setup_probe` does: the
+    answer field autocapitalizes letters.
+    """
+    u = next(random_uuids())
+    actions = [
+        act("is.workflow.actions.ask", UUID=u, WFAskActionPrompt=prompt, WFInputType="Text"),
+        act("is.workflow.actions.setclipboard", WFInput=attach(out(u, "Provided Input"))),
+    ]
+    return document(name, actions, glyph=59692, color=4292093695, input_classes=[])

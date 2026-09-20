@@ -1,0 +1,11 @@
+SEEDS: tuple[tuple[str, float, float], ...] = (
+    ("Always Allow", 0.500, 0.665),   # (201, 581) on 402x874
+    ("Allow", 0.729, 0.200),   # (293, 174) on 402x874
+    ("Allow Once", 0.500, 0.589),   # (201, 514) on 402x874
+    ("Done", 0.729, 0.347),   # (293, 303) on 402x874
+    ("Cancel", 0.271, 0.347),   # (108, 303) on 402x874
+)
+
+ASK_FIELD: tuple[float, float] = (0.500, 0.177)   # (201, 154)
+
+# never seen in this capture: Don't Allow

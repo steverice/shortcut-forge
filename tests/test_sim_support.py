@@ -31,6 +31,25 @@ def test_setup_probe_is_two_actions_with_one_question():
     check_all(doc)
 
 
+def test_ask_probe_asks_and_copies():
+    doc = probes.ask_probe("Ask Canary")
+    acts = doc["WFWorkflowActions"]
+    assert [a["WFWorkflowActionIdentifier"] for a in acts] == [
+        "is.workflow.actions.ask",
+        "is.workflow.actions.setclipboard",
+    ]
+    ask = acts[0]["WFWorkflowActionParameters"]
+    assert ask["WFInputType"] == "Text"
+    assert "digits" in ask["WFAskActionPrompt"]
+    # The clipboard action carries the Ask action's output, which is what makes
+    # the answer readable from outside the device.
+    pasted = acts[1]["WFWorkflowActionParameters"]["WFInput"]["Value"]
+    assert pasted["OutputUUID"] == ask["UUID"]
+    assert pasted["OutputName"] == "Provided Input"
+    assert doc["WFWorkflowImportQuestions"] == []
+    check_all(doc)
+
+
 # -- certs ----------------------------------------------------------------------
 
 

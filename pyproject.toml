@@ -115,6 +115,9 @@ ignore = [
     "TC",                     # tests use runtime imports freely
     "PTH",                    # tests can use open() directly
 ]
+"tests/capture_idb_fixtures.py" = [
+    "T201",   # a human runs this by hand against a real device; the prints are its only UI
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["shortcut_forge_lib", "shortcut_forge_cli"]
