@@ -198,6 +198,13 @@ def answer(path):
     )
     sys.exit(1)
 
+typed = pathlib.Path(os.environ["IDB_LOG"] + ".typed")
+after = os.environ.get("IDB_SCENE_AFTER")
+if after and typed.exists():
+    scene = pathlib.Path(after)
+if argv[:2] == ["ui", "text"]:
+    typed.write_text("typed")
+    sys.exit(0)
 if argv[:2] == ["ui", "describe-all"]:
     backend = argv[argv.index("--api") + 1] if "--api" in argv else "ax"
     answer(scene / f"all-{backend}.json")
@@ -438,3 +445,104 @@ def test_a_moving_button_is_not_tapped(fake_idb, monkeypatch):
     monkeypatch.setattr(Simulator, "at", lambda self, x, y: next(frames, None))
     with pytest.raises(harness.SimulatorError, match="moved or vanished"):
         sim._tap(button("Allow", 300.0))
+
+
+def test_clear_prompts_presses_until_none_is_left_and_says_what_it_pressed(fake_idb, monkeypatch):
+    sim = fake_idb("library")
+    answers = iter([button("Always Allow"), button("Allow"), None])
+    monkeypatch.setattr(Simulator, "find_button", lambda self, *labels: next(answers, None))
+    monkeypatch.setattr(Simulator, "_tap", lambda self, e, **kw: e.label or "")
+    assert sim.clear_prompts() == ["Always Allow", "Allow"]
+
+
+def test_clear_prompts_never_offers_allow_once_or_done(fake_idb, monkeypatch):
+    """Allow Once asks again next run; Done would submit an empty answer to the Ask dialog."""
+    sim = fake_idb("library")
+    asked = []
+
+    def find(self, *labels):
+        asked.append(labels)
+        return
+
+    monkeypatch.setattr(Simulator, "find_button", find)
+    assert sim.clear_prompts() == []
+    assert asked == [("Always Allow", "Allow")]
+
+
+def test_clear_prompts_raises_if_a_consent_never_stops_coming_back(fake_idb, monkeypatch):
+    sim = fake_idb("library")
+    monkeypatch.setattr(Simulator, "find_button", lambda self, *labels: button("Allow"))
+    monkeypatch.setattr(Simulator, "_tap", lambda self, e, **kw: e.label or "")
+    with pytest.raises(harness.SimulatorError, match="kept coming back"):
+        sim.clear_prompts()
+
+
+def test_fill_types_into_the_field_and_reads_it_back(fake_idb, monkeypatch):
+    sim = fake_idb("setup-question")
+    typed = next(
+        e.value
+        for e in idb.parse_elements((FIXTURES / "setup-question-keyboard" / "all-ax.json").read_text())
+        if e.type in harness.FIELD_TYPES and e.value
+    )
+    monkeypatch.setenv("IDB_SCENE_AFTER", str(FIXTURES / "setup-question-keyboard"))
+    assert sim.fill(typed) == typed
+
+
+def test_a_typed_value_that_arrives_late_is_waited_for(fake_idb, monkeypatch):
+    """`idb ui text` returns before the field's `AXValue` has caught up.
+
+    Measured during the fixture capture: a read 1.5 s after typing came back
+    one character short, on a device that had read the same string verbatim
+    earlier in the session. A single read after a fixed sleep is a race, and
+    the read-back is the whole reason for typing through `fill` rather than
+    calling `idb ui text` directly.
+    """
+    sim = fake_idb("setup-question")
+    field = idb.Frame(23, 237, 356, 100)
+    readings = iter(
+        [
+            idb.Element(9, "TextArea", None, "zz424", field, ()),
+            idb.Element(9, "TextArea", None, "zz42424", field, ()),
+            idb.Element(9, "TextArea", None, "zz424242", field, ()),
+        ]
+    )
+    monkeypatch.setattr(Simulator, "_field_in_tree", lambda self: next(readings, None))
+    assert sim._settle_value(sim._field_in_tree, "zz424242") == "zz424242"
+
+
+def test_a_value_that_never_settles_comes_back_as_whatever_it_holds(fake_idb, monkeypatch):
+    """So the caller raises with what the field actually shows, not with a timeout."""
+    sim = fake_idb("setup-question")
+    stuck = idb.Element(9, "TextArea", None, "zz424", idb.Frame(23, 237, 356, 100), ())
+    monkeypatch.setattr(Simulator, "_field_in_tree", lambda self: stuck)
+    assert sim._settle_value(sim._field_in_tree, "zz424242", timeout=0.01) == "zz424"
+
+
+def test_fill_raises_when_the_field_did_not_take_the_text(fake_idb):
+    """The read-back the old harness never had: a tap that missed the field typed into nothing."""
+    sim = fake_idb("setup-question")
+    with pytest.raises(harness.SimulatorError, match="holds"):
+        sim.fill("424242")
+
+
+def test_confirm_presses_the_label_when_nothing_covers_it(fake_idb):
+    sim = fake_idb("setup-question")
+    assert sim.confirm("Add Shortcut") == "Add Shortcut"
+
+
+def test_confirm_clears_the_keyboard_and_never_taps_blind(fake_idb, monkeypatch):
+    """On this sheet the empty area is the dimmed backdrop, which dismisses it and loses the answer."""
+    sim = fake_idb("setup-question-keyboard")
+    pressed = []
+    monkeypatch.setattr(Simulator, "_tap", lambda self, e, **kw: (pressed.append(e.label), e.label or "")[1])
+    with pytest.raises(harness.SimulatorError, match="Add Shortcut"):
+        sim.confirm("Add Shortcut")
+    assert set(pressed) <= {"Close", "Continue"}, f"confirm tapped something it should not have: {pressed}"
+
+
+def test_prepare_refuses_a_companion_that_may_be_from_another_xcode(fake_idb, monkeypatch):
+    sim = fake_idb("library")
+    monkeypatch.setenv("DEVELOPER_DIR", "/Applications/Xcode-beta.app/Contents/Developer")
+    monkeypatch.setattr(Simulator, "_companion_running", lambda self: True)
+    with pytest.raises(harness.SimulatorError, match="drop_companion"):
+        sim.prepare()

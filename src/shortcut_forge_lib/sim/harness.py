@@ -21,6 +21,7 @@ classes below for what differs and docs/simulator-harness.md for how it was esta
 from __future__ import annotations
 
 import json
+import os
 import plistlib
 import sqlite3
 import subprocess
@@ -29,13 +30,16 @@ import time
 import urllib.parse
 import warnings
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import Quartz as _Quartz
 from PIL import Image
 
 from shortcut_forge_lib.sim import ax, idb
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # pyobjc populates the Quartz namespace lazily and ships no stubs, so every
 # attribute on it is unresolved to a type checker. One cast here instead of an
@@ -748,14 +752,17 @@ class Simulator:
     def wait_booted(self, timeout: int = 180) -> None:
         """Wait for Booted, then for the system to actually be usable.
 
-        "Booted" is reported well before SpringBoard can service an openurl,
-        and the gap is much wider on the first boot after an erase — so poll
-        for Shortcuts being resolvable rather than sleeping a fixed amount.
+        Three waits, each for a different lie. "Booted" is reported well before
+        SpringBoard can service an openurl, and the gap is much wider on the
+        first boot after an erase. Shortcuts becomes resolvable a while after
+        that. And idb's companion — which this poll is what spawns — answers
+        its first read with "No translation object returned" for about four
+        seconds after it starts, so the device is not drivable until a tree
+        query comes back with something in it.
         """
         deadline = time.time() + timeout
         while time.time() < deadline:
-            out = _run("xcrun", "simctl", "list", "devices").stdout
-            if any(self.udid in line and "(Booted)" in line for line in out.splitlines()):
+            if self._is_booted():
                 break
             time.sleep(1)
         else:
@@ -764,10 +771,45 @@ class Simulator:
         while time.time() < deadline:
             r = _run("xcrun", "simctl", "listapps", self.udid, check=False)
             if "com.apple.shortcuts" in r.stdout:
-                time.sleep(3)
+                break
+            time.sleep(2)
+        else:
+            raise SimulatorError("Shortcuts never became available on the device")
+
+        while time.time() < deadline:
+            if len(self.elements(idb.AX)) > 1 or len(self.elements(idb.AXBRIDGE)) > 1:
                 return
             time.sleep(2)
-        raise SimulatorError("Shortcuts never became available on the device")
+        raise SimulatorError(
+            f"idb never returned an accessibility tree for {self.udid}. A companion may be stuck — "
+            f"try `idb disconnect {self.udid}`."
+        )
+
+    def prepare(self) -> None:
+        """Get this device ready to be driven. Never launches Device Hub.
+
+        Quitting Device Hub shuts down every booted simulator, so the harness
+        neither opens it nor depends on it. Someone may keep it open alongside;
+        idb's touches do not care whether a window is showing the device.
+        """
+        if os.environ.get("DEVELOPER_DIR") and self._companion_running():
+            raise SimulatorError(
+                f"DEVELOPER_DIR is set and a companion is already running for {self.udid}. It loaded "
+                f"SimulatorKit from whichever Xcode spawned it and nothing records which, so it may be "
+                f"driving this device from the wrong one. Call drop_companion() first, or unset DEVELOPER_DIR."
+            )
+        if self._is_booted():
+            self.wait_booted()
+        else:
+            self.boot()
+
+    def _is_booted(self) -> bool:
+        out = _run("xcrun", "simctl", "list", "devices").stdout
+        return any(self.udid in line and "(Booted)" in line for line in out.splitlines())
+
+    def _companion_running(self) -> bool:
+        # `-f` has no long form in BSD pgrep; the long-flag rule does not apply.
+        return _run("pgrep", "-f", f"idb_companion --udid {self.udid}", check=False).returncode == 0
 
     def erase(self) -> None:
         """Full clean slate. Also drops the trusted root cert, so re-add it."""
@@ -920,6 +962,160 @@ class Simulator:
     def _keyboard_up(self, tree: list[idb.Element]) -> bool:
         """Is the software keyboard drawn in `tree`? `_is_key()` is what makes this exact."""
         return any(_is_key(e) for e in tree)
+
+    # -- the flows ------------------------------------------------------
+    def clear_prompts(self, allow: tuple[str, ...] = ("Always Allow", "Allow"), *, rounds: int = 8) -> list[str]:
+        """Answer every consent the runner has up, and report which ones. None up is an empty list.
+
+        Called after `run_shortcut` and at the end of `install`. A URL-started
+        run ends on "Allow … to output 1 text item?", and left pending, the
+        *next* run finishes in two seconds with no dialog — from outside,
+        exactly what a dropped run URL looks like.
+
+        Never *Allow Once*, which asks again on the next run and makes a
+        priming pass worthless. Never *Done*, which would submit an empty
+        answer to an Ask dialog. Never *OK*: a run error is dismissed by an
+        explicit `press("OK")` so that it is not swallowed here.
+        """
+        pressed: list[str] = []
+        for _ in range(rounds):
+            found = self.find_button(*allow)
+            if found is None:
+                return pressed
+            pressed.append(self._tap(found))
+            time.sleep(1.0)
+        raise SimulatorError(f"consent prompts kept coming back after {rounds} rounds: {pressed}")
+
+    def fill(self, text: str) -> str:
+        """Type into a text field the *frontmost app* drew, and read it back. Returns what it holds.
+
+        This is the setup-question sheet, not the runner's Ask dialog —
+        `answer_prompt` is that one. The read-back is the check the old harness
+        never had: a tap that missed the field typed into nothing and reported
+        success.
+        """
+        field = self._field_in_tree()
+        if field is None:
+            raise SimulatorError(f"no text field in the frontmost app; it showed {self._labels()}")
+        self._idb(*idb.tap_args(self.udid, *field.frame.center()))
+        time.sleep(1.0)
+        if text:
+            self._idb(*idb.text_args(self.udid, text))
+        got = self._settle_value(self._field_in_tree, text)
+        if got != text:
+            self.screenshot("fill-readback.png")
+            raise SimulatorError(f"the field holds {got!r} after typing {text!r}")
+        return got
+
+    def _settle_value(self, read: Callable[[], idb.Element | None], want: str, timeout: float = 8.0) -> str:
+        """Poll an element's value until it equals `want`; return whatever it holds when time runs out.
+
+        `idb ui text` returns before the field's `AXValue` has caught up.
+        Measured 2026-09-19: a read 1.5 s after typing eight characters came
+        back one character short, on a device where the same read had been
+        verbatim earlier in the session. A single read after a fixed sleep is
+        therefore a race, and since the read-back is the entire reason for
+        typing through these methods rather than calling `idb ui text`
+        directly, losing it to a race would be worse than not having it.
+
+        An empty `want` returns at once, which is what the deliberately empty
+        answer needs.
+        """
+        deadline = time.time() + timeout
+        got = ""
+        while True:
+            seen = read()
+            got = (seen.value if seen else None) or ""
+            if got == want or time.time() >= deadline:
+                return got
+            time.sleep(0.5)
+
+    def confirm(self, *labels: str, rounds: int = 6, timeout: float = 45) -> str:
+        """Press one of `labels` on a sheet the frontmost app drew, clearing whatever covers it.
+
+        Used after `fill`, where three things can stand between the answer and
+        the sheet's own button: the software keyboard, which covers the
+        buttons; a first-run typing tip, whose *Continue* hands focus back to
+        the field and raises the keyboard again; and the sheet still animating.
+
+        Nothing is tapped blind. The keyboard is dismissed by its own *Close*,
+        identified as the one sitting between the middle of the screen and the
+        keyboard's top row of keys, because the import sheet carries a *Close*
+        of its own at the top. Tapping an empty area — what the old harness did
+        — hits the dimmed backdrop here, which dismisses the sheet and loses
+        the answer.
+
+        Clearing the keyboard is not optional on this screen: with it up, the
+        default backend's tree drops the sheet's buttons entirely, so there is
+        nothing to find until it is gone.
+
+        It presses and returns; it does not check that the sheet went away. On
+        iOS 27.0 the press lands on a button that does nothing, and the canary
+        has to be able to read *not installed* afterwards.
+        """
+        deadline = time.time() + timeout
+        for _ in range(rounds):
+            if time.time() > deadline:
+                break
+            if self._clear_overlay(self._tree()):
+                continue
+            for label in labels:
+                found = self._find_in_tree(label)
+                if found is not None:
+                    return self._tap(found)
+            time.sleep(1.0)
+        self.screenshot(f"no-{_slug(labels[0])}.png")
+        raise SimulatorError(f"none of {list(labels)} became reachable on the sheet; it showed {self._labels()}")
+
+    def _clear_overlay(self, tree: list[idb.Element]) -> bool:
+        """Dismiss one thing covering a sheet's buttons. True when something was dismissed."""
+        tip = next((e for e in tree if e.label == "Continue" and e.is_button), None)
+        if tip is not None:
+            confirmed = self._confirmed(tip)
+            if confirmed is not None:
+                self._tap(confirmed)
+                return True
+        keys = [e for e in tree if _is_key(e)]
+        if not keys:
+            return False
+        # The keyboard's own Close sits just above its top row of keys —
+        # measured at y 482 with the keys starting at y 597, on an 874-point
+        # screen. Both bounds are needed: the import sheet carries a Close of
+        # its own at the top of the screen, and tapping that one dismisses the
+        # import instead of the keyboard.
+        top_key = min(k.frame.y for k in keys)
+        _w, h = self.screen_size()
+        close = next(
+            (e for e in tree if e.label == "Close" and e.is_button and h * 0.4 < e.frame.y < top_key),
+            None,
+        )
+        if close is None:
+            return False
+        confirmed = self._confirmed(close)
+        if confirmed is None:
+            return False
+        self._tap(confirmed)
+        return True
+
+    def _field_in_tree(self) -> idb.Element | None:
+        return next((e for e in self._tree() if e.type in FIELD_TYPES), None)
+
+    def _wait_for_field(self, timeout: float) -> idb.Element | None:
+        """Poll the Ask dialog's seed until its field answers. None when no dialog came up.
+
+        The dialog belongs to another process, so this is a hit test, not a
+        tree read — and it is the one place a missing dialog is an answer
+        rather than a failure, because a caller asks "was there a prompt?".
+        """
+        w, h = self.screen_size()
+        x, y = int(w * ASK_FIELD[0]), int(h * ASK_FIELD[1])
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            seen = self.at(x, y)
+            if seen is not None and seen.type in FIELD_TYPES:
+                return seen
+            time.sleep(1.0)
+        return None
 
     # -- finding a button -------------------------------------------------
     def find_button(self, *labels: str) -> idb.Element | None:
