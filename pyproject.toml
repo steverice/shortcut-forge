@@ -25,12 +25,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Driving the iOS Simulator: screenshots are read as arrays, taps are posted
-# through Quartz. Nothing in the core needs any of it.
+# Driving the iOS Simulator through idb. Touches and the accessibility tree
+# both come back from the `idb` CLI as JSON, and a screenshot comes back from
+# `simctl` as a file, so the only Python dependency left is the one `image()`
+# uses to hand that file back as an object. Nothing in the core needs it.
 sim = [
-    "numpy>=1.26",
     "Pillow>=10.0",
-    "pyobjc-framework-Quartz>=10.0",
 ]
 # Baking and driving a throwaway macOS guest. Screenshots are read as images;
 # clicks go through vncdotool, which is run as the `vncdo` command rather than
@@ -49,9 +49,7 @@ dev = [
     "commitizen>=4.0",
     "cz-conventional-gitmoji>=0.7",
     "pre-commit>=4.0",
-    "numpy>=1.26",
     "Pillow>=10.0",
-    "pyobjc-framework-Quartz>=10.0",
 ]
 
 [project.scripts]

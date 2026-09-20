@@ -246,7 +246,15 @@ with frames, at about 0.2 s a call. Touches and typed text reach them too.
 
 `--api axbridge` is worth using for the frontmost app: on the library screen it
 returned 80 elements to the default backend's 8, including the navigation bar
-and each tile's Play button, which the default backend drops.
+and each tile's Play button, which the default backend drops. That is not the
+whole picture, though: the default backend returns the frontmost presentation
+and little else, while `axbridge` returns the whole window hierarchy. On the
+setup-question page the default backend gave six elements, including the
+sheet's text field — which `axbridge`, for all its 158 elements, sheet
+included, does not report at all. With the keyboard up, the gap changes shape
+rather than closing: the default backend drops the sheet's own buttons and
+reports the keyboard's keys as `Button`s, where `axbridge` types them as
+`Key`s.
 
 **Quitting Device Hub shuts down every booted simulator**, as quitting
 Simulator.app did. A harness boots with `simctl boot` and never launches Device
@@ -272,7 +280,7 @@ After a companion is killed by hand, every command fails on a missing socket
 until `idb kill` resets the client's registry; the next command then spawns a
 fresh companion.
 
-### The rebuild, when it happens
+### The rebuild, as it landed
 
 Link verification no longer needs a device: fetching the link's payload from
 iCloud and diffing it against `dist/<name>.xml` cannot be fooled by a tap that
@@ -302,19 +310,25 @@ all present by label. Whether a link's sheet offers *Set Up Shortcut* becomes a
 label check rather than a count of blue rectangles, and `links.install_from_link`
 keeps its retry and swaps only the finder.
 
-**What survives in `sim/harness.py`.** Dead: both `_Host` classes,
+**What it left in `sim/harness.py`.** Gone: both `_Host` classes and `sim/ax.py`,
 `_detect_host`, `_mouse_click`, `_type_mac`, `_press_escape`, `_title_is`,
 `_screen_box`, `_widest_gap`, `KEYCODES`, `window_rect`, `focus_window`,
-`prepare_window`, `menu_item`, `menu_click`, `ensure_hardware_keyboard`,
-`_mapping`, and the Quartz and numpy imports — about half the file. Unchanged:
-`find`, `boot` (minus the launch), `wait_booted`, `erase`, `add_root_cert`,
-`terminate_shortcuts`, `run_shortcut`, `screenshot`, `image`, `db_path`,
-`library`, `shortcut_actions`, `stored_content`, and the plist helpers.
-Changing shape: `tap` takes points; `type_text` is one call; `blue_buttons` and
-`tap_affirmative` become one label lookup with the two-tier search above, and
-`answer_prompt` and `cancel_prompt` collapse into it; `install` keeps its retry
-loop and swaps the finder. A consumer suite that calls `blue_buttons` or
-`image` directly needs the same swap.
+`menu_item`, `menu_click`, `ensure_hardware_keyboard`, `_mapping`,
+`blue_buttons`, `tap_affirmative`, and the Quartz and numpy imports — about half
+the file. `prepare_window()` stays one release as a deprecated alias of
+`prepare()`. Unchanged: `find`, `boot` (minus the launch), `wait_booted` (plus a
+third wait, for the companion the poll itself spawns), `erase` (which now drops
+that companion), `add_root_cert`, `terminate_shortcuts`, `set_pasteboard`,
+`run_shortcut`, `screenshot`, `image`, `db_path`, `library`,
+`shortcut_actions`, `stored_content`, `device_label`, and the plist helpers.
+Changed shape: `tap` takes device points; `type_text` is one `idb ui text` call;
+the blue-rectangle search became `find_button` and `press`, which name a button
+and hit-test it before tapping it; `answer_prompt` reads the field back and
+takes `expect` for a field that normalizes what was typed; `cancel_prompt` finds
+Cancel by label instead of reflecting Done's box; `install` keeps its retry loop,
+swaps the finder, and gains `skip_setup=False` for the setup-question page. The
+backend difference measured above is pinned by `tests/fixtures/idb/`, so a
+runtime that changes it fails a unit test rather than a run.
 
 ## What had to be worked out
 

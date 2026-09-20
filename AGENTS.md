@@ -19,6 +19,7 @@ src/
     types.py             # OnStep
     sim/
       harness.py         # Simulator: boot, install, run, tap, type, read state
+      idb.py             # argv and JSON for the idb CLI: the one way in to the device
       certs.py           # ensure_certs(): throwaway CA the simulator trusts
       probes.py          # setup_probe(): the import-question canary
       links.py           # install_from_link(), check_link()
@@ -68,8 +69,22 @@ credentials baked in must stay inside the directory it was written to.
 
 - `shortcut_forge_lib` never imports Rich, argparse, or argcomplete. The CLI is the
   only place that formats output.
-- `shortcut_forge_lib.sim.harness` must import without Xcode present. Host
-  detection is lazy (`host()`), and unit tests never call it.
+- `shortcut_forge_lib.sim.harness` must import with neither Xcode nor idb
+  installed. Nothing runs at import time; the first subprocess is in
+  `Simulator.find()`, and a test proves it by importing the module with an
+  empty `PATH`.
+- **Nothing is tapped that a hit test did not just name.** A label found in the
+  frontmost tree is confirmed by `describe-point` at its center before any tap,
+  because the tree returns the screen *under* a runner dialog as readily as the
+  dialog-free screen, and the keyboard covers a sheet's own buttons after
+  typing. The dialogs the Shortcuts runner draws in its own process are found
+  by hit test at the measured positions in `SEEDS`; a dialog no seed knows
+  about raises with a screenshot rather than being swept for.
+- **The harness never launches Device Hub**, and never needs it: quitting it
+  shuts down every booted simulator. One Xcode per process — a companion reads
+  `DEVELOPER_DIR` when it spawns and never again — and companions are recovered
+  with `idb disconnect <udid>`, never `idb kill`, which SIGKILLs every companion
+  on the Mac.
 - **A guest is never certified by a screenshot.** Screen capture and pointer
   input are separate TCC grants, a denied capture is a well-formed frame rather
   than an error, and a guest at 2x HiDPI renders perfectly while dropping every
@@ -116,7 +131,7 @@ type it. Run `make check` before every commit. Never bump the version locally.
 | Tool | Purpose | Required |
 |---|---|---|
 | `validate-shortcut`, `sign-shortcut` | from the shortcuts-playground plugin; validating and signing | for `build_all()` and the CLI |
-| `xcrun simctl`, Device Hub or Simulator.app | driving a simulator | for `shortcut_forge_lib.sim` |
+| `idb` 1.6.0+ (`brew trust facebook/fb && brew install facebook/fb/idb`; Homebrew refuses the formula from an untrusted tap) | driving a simulator: taps, typing, the accessibility tree | for `shortcut_forge_lib.sim` |
+| `xcrun simctl` | booting, erasing, opening URLs, screenshots, the device's own files | for `shortcut_forge_lib.sim` |
 | `openssl` | the throwaway CA | for `sim.certs` |
-| `osascript`, `screencapture` | window geometry and taps | for `shortcut_forge_lib.sim` |
 | `tart` 2.37+ (from mise, `github:openai/tart` — **not** Homebrew, which pins 2.32.1 and fails to install), `vncdo`, `hdiutil`, `PlistBuddy` | baking and driving a macOS guest | for `shortcut_forge_lib.guest` |

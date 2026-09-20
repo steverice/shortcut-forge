@@ -34,7 +34,9 @@ jobs:
 
   unit-test:
     name: Unit Tests (Python ${{ matrix.python-version }})
-    # macOS, because the sim extra depends on pyobjc, which has no Linux wheels.
+    # macOS, because what this library wraps is Apple's own tooling — simctl,
+    # idb, the signer. The `sim` extra itself no longer needs it: pyobjc went
+    # with the window-driving host.
     runs-on: macos-latest
     strategy:
       matrix:
