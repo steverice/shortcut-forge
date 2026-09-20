@@ -29,7 +29,14 @@ from shortcut_forge_lib.toolchain import sign
 
 pytestmark = pytest.mark.integration
 
-ANSWER = "424242"  # digits: the answer field autocapitalizes letters
+ANSWER = "42424"  # five digits, deliberately: see below
+
+# Digits because the answer field autocapitalizes letters — and five of them
+# rather than six because `ask_probe` copies its answer to the clipboard, and
+# a consumer's shortcut treats a six-digit clipboard as a login code it should
+# offer instead of asking for one. A six-digit canary answer left on the device
+# silently steers that suite down its clipboard path; measured 2026-09-20, when
+# it cost two tests in the merge gate.
 
 
 @pytest.fixture(scope="module")

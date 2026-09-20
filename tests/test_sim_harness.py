@@ -513,6 +513,25 @@ def test_answer_prompt_can_expect_a_value_other_than_what_was_typed(fake_idb, mo
     assert sim.answer_prompt("012345", expect="12345") is True
 
 
+def test_a_wait_that_times_out_drops_the_companion_and_looks_once_more(fake_idb, monkeypatch):
+    """A long-lived companion stops resolving hit tests inside a dialog's rectangle.
+
+    Measured 2026-09-20: a companion an hour old saw nothing of an Ask dialog
+    that one ninety seconds old resolved completely, field included, while
+    `idb ui tap` landed on it throughout. A timeout is therefore not evidence
+    that no dialog came up, and reporting one as though it were is the kind of
+    unearned negative this harness exists to stop making.
+    """
+    sim = fake_idb("library")
+    field = idb.Element(9, "TextArea", None, "", idb.Frame(23, 123, 356, 114), ())
+    dropped: list[str] = []
+    answers = iter([None, field])
+    monkeypatch.setattr(Simulator, "_poll_for_field", lambda self, t: next(answers, None))
+    monkeypatch.setattr(Simulator, "drop_companion", lambda self: dropped.append("dropped"))
+    assert sim._wait_for_field(1.0) is field
+    assert dropped == ["dropped"]
+
+
 def test_the_ask_seed_does_not_mistake_the_librarys_search_bar_for_the_dialog(fake_idb, monkeypatch):
     """The search bar spans the Ask seed, and it belongs to the app rather than the runner.
 

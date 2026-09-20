@@ -72,13 +72,50 @@ DIALOG_LABELS = frozenset({"Done", "Cancel", "Allow", "Always Allow", "Allow Onc
 #: finds raises with a screenshot rather than being swept for — a sweep costs
 #: 25 s or more, and the consumer polls for the *absence* of a dialog every
 #: second. Measuring the new shape once and adding a row here is the fix.
+#:
+#: A label can appear more than once, at different positions, for two dialogs
+#: that share a button's text but never their frame: the runner's "One-time
+#: automation setup" sheet (shown once per device, the first time any shortcut
+#: is run by URL) carries its own *Done* and *Cancel*, well below the Ask for
+#: Input dialog's. Measured 2026-09-20 on a 402x874 screen: `com.apple.ShortcutsUI`
+#: draws it too — a different pid from the frontmost app, invisible to every
+#: tree query, exactly like the Ask dialog and the consent alerts — with Done at
+#: `{{207, 600}, {172, 54}}` and Cancel at `{{23, 600}, {172, 54}}`. `_probe_seeds`
+#: checks entries in order and stops at the first hit, so this row costs one
+#: extra miss on the ordinary Ask-dialog lookups and never conflates the two:
+#: whichever sheet is actually on screen is the only one a hit test can find.
+#:
+#: The network consent — "Allow ... to connect to localhost?" — is a second
+#: unmeasured shape found the same day: four lines of body text push its
+#: buttons well below the shorter clipboard consent's, at `{{207, 250.67},
+#: {172, 54}}` for Allow and `{{23, 250.67}, {172, 54}}` for Don't Allow, also
+#: `com.apple.ShortcutsUI`. *Allow* was already in `clear_prompts`'s default
+#: set, so this row alone was the fix; nothing else needed to change.
+#:
+#: The clipboard-send consent — "Allow ... to send 1 text item to
+#: 'localhost'?" — is a third, measured the same day: a value that came off
+#: the clipboard earns its own consent the first time it is sent anywhere, and
+#: this one's three buttons are each full-width and stacked (*Don't Allow*,
+#: *Allow Once*, *Always Allow*, top to bottom), not split left and right like
+#: every other dialog here — so all three sit at x fraction 0.500, not 0.729 or
+#: 0.271. Frames: `{{23, 483}, {356, 54}}` (Don't Allow), `{{23, 549}, {356,
+#: 54}}` (Allow Once), `{{23, 615}, {356, 54}}` (Always Allow), all
+#: `com.apple.ShortcutsUI`. *Always Allow* was already in `clear_prompts`'s
+#: default set, so this row alone was the fix.
 SEEDS: tuple[tuple[str, float, float], ...] = (
-    ("Always Allow", 0.500, 0.665),  # (201, 581) on 402x874
-    ("Allow", 0.729, 0.200),  # (293, 174)
-    ("Allow Once", 0.500, 0.589),  # (201, 514)
-    (DONT_ALLOW, 0.271, 0.200),  # (108, 174)
-    ("Done", 0.729, 0.347),  # (293, 303)
-    ("Cancel", 0.271, 0.347),  # (108, 303)
+    ("Always Allow", 0.500, 0.665),  # (201, 581) on 402x874 — the output-permission sheet
+    ("Allow", 0.729, 0.200),  # (293, 174) — the clipboard consent
+    ("Allow Once", 0.500, 0.589),  # (201, 514) — the output-permission sheet
+    (DONT_ALLOW, 0.271, 0.200),  # (108, 174) — the clipboard consent
+    ("Done", 0.729, 0.347),  # (293, 303) — the Ask for Input dialog
+    ("Cancel", 0.271, 0.347),  # (108, 303) — the Ask for Input dialog
+    ("Allow", 0.729, 0.318),  # (293, 278) — "connect to localhost", measured 2026-09-20
+    (DONT_ALLOW, 0.271, 0.318),  # (109, 278) — "connect to localhost", measured 2026-09-20
+    ("Done", 0.729, 0.717),  # (293, 627) — the one-time automation setup sheet, measured 2026-09-20
+    ("Cancel", 0.271, 0.717),  # (109, 627) — the one-time automation setup sheet, measured 2026-09-20
+    (DONT_ALLOW, 0.500, 0.584),  # (201, 510) — "send 1 text item to localhost", measured 2026-09-20
+    ("Allow Once", 0.500, 0.659),  # (201, 576) — "send 1 text item to localhost", measured 2026-09-20
+    ("Always Allow", 0.500, 0.735),  # (201, 642) — "send 1 text item to localhost", measured 2026-09-20
 )
 
 #: Where the runner's Ask for Input dialog puts its field.
@@ -543,7 +580,29 @@ class Simulator:
         return next((e for e in self._tree() if e.type in FIELD_TYPES), None)
 
     def _wait_for_field(self, timeout: float) -> idb.Element | None:
-        """Poll the Ask dialog's seed until *its* field answers. None when no dialog came up.
+        """Wait for the Ask dialog's field. None when no dialog came up — once that is earned.
+
+        A companion that has been alive a long time stops resolving hit tests
+        inside a runner dialog's rectangle: `describe-point` answers every
+        point in the dialog with the same sentence it uses for an empty one,
+        while `idb ui tap` at those coordinates still lands. Measured
+        2026-09-20 — a companion an hour old saw nothing of an Ask dialog that
+        one ninety seconds old resolved completely, the field included.
+
+        So a timeout here is not yet evidence that no dialog came up, and this
+        method's whole contract is that a `None` means exactly that. It drops
+        the companion and looks once more before saying so. The cost falls
+        entirely on the path that was about to report a negative; a dialog that
+        is there is found on the first pass and pays nothing.
+        """
+        found = self._poll_for_field(timeout)
+        if found is not None:
+            return found
+        self.drop_companion()
+        return self._poll_for_field(min(timeout, 20.0))
+
+    def _poll_for_field(self, timeout: float) -> idb.Element | None:
+        """One pass of the wait `_wait_for_field` wraps.
 
         The dialog belongs to another process, so this is a hit test, not a
         tree read — and it is the one place a missing dialog is an answer
