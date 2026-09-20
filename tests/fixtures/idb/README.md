@@ -81,3 +81,44 @@ and none needed correcting from what a prior capture already recorded.
 Logs: `/tmp/canary-27-0.log`, `/tmp/canary-27-2.log` (the pytest runs);
 `/tmp/canary-overlay-27-0.log`, `/tmp/canary-overlay-27-2.log` (the overlay
 measurement).
+
+## The second canary — `SEEDS` and `ASK_FIELD`, exercised on hardware for the first time (2026-09-20)
+
+`test_the_runners_dialogs_are_found_where_the_seeds_say` is the first thing on
+this branch to exercise `answer_prompt`, `cancel_prompt`, and their shared
+`_wait_for_field` against a live device — nothing before it ever called
+`_wait_for_field`, unit tests included; it existed with no caller and no test
+of its own. Running it caught a real bug: `_wait_for_field` hit-tested the
+`ASK_FIELD` seed and accepted the first element of the right type, with no
+check that it actually belonged to the runner's dialog. The Shortcuts
+Library's own search bar sits at almost exactly that point (`y` 168–212
+against the seed's `y` 203), and it is what the screen shows for several
+seconds after `run_shortcut` while Shortcuts relaunches — `terminate_shortcuts`
+precedes every `run_shortcut` in this suite, so that relaunch happens on
+every call. `_wait_for_field` now also requires the hit's pid to differ from
+`frontmost_pid()`, checked fresh per candidate rather than once before the
+poll (a pid read before the poll captures whatever was frontmost *before*
+the relaunch — SpringBoard, measured at 10418 in one trace — and every
+element of the newly-relaunched Shortcuts then differs from it, which
+accepts the search bar all over again).
+
+Run for real, on both runtimes, after that fix:
+
+- **iOS 27.0 (27.0 - 24A434), freshly erased** (`xcrun simctl shutdown`,
+  `erase`, `boot`, then the full `tests/test_sim_canary.py`, all three tests):
+  `clear_prompts` pressed `['Allow', 'Always Allow']`, in that order — the
+  clipboard consent and the output-permission sheet, both raised for real on
+  a device that had never granted either. Not an empty list: an erased
+  device is the only one that reaches this path, since a device that has
+  already granted its consents skips straight past `clear_prompts` with
+  nothing to clear.
+- **iOS 27.2 beta 1 (27.2 - 24B5084k)**, booted under
+  `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer` per the
+  task brief (not erased): `clear_prompts` also pressed
+  `['Allow', 'Always Allow']`, same order. All three tests passed on both
+  runtimes.
+
+`SEEDS`'s consent-dialog fractions needed no correction on either runtime —
+both are still the 402x874-point screen the original capture measured. This
+is the first run on this branch where any of those seeds actually resolved a
+real consent dialog rather than replaying a capture of one.

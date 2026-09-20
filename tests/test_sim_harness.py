@@ -1,4 +1,4 @@
-"""The harness's pure parts: geometry, title matching, archive parsing, and button finding.
+"""The harness's pure parts, and the idb-backed flows, replayed against captured fixtures.
 
 Nothing here boots a simulator or calls `xcode-select`; importing the module
 must not either.
@@ -9,63 +9,28 @@ from __future__ import annotations
 import os
 import plistlib
 import subprocess
+import sys
 from pathlib import Path
 
-import numpy as np
 import pytest
-from PIL import Image
 
 from shortcut_forge_lib.sim import harness, idb
-from shortcut_forge_lib.sim.harness import (
-    KEYCODES,
-    Simulator,
-    _contiguous,
-    _keyed_lookup,
-    _plist,
-    _screen_box,
-    _title_is,
-    _widest_gap,
-)
+from shortcut_forge_lib.sim.harness import Simulator, _keyed_lookup, _plist
+
+SRC = Path(__file__).parent.parent / "src"
 
 
-def test_importing_the_module_does_not_detect_a_host():
-    assert harness._HOST is None
-
-
-def test_title_matching_needs_a_boundary():
-    """`bw-ios27rc` is a prefix of `bw-ios27rc-b`; a loose match drives the wrong device."""
-    assert _title_is("iPhone 17 Pro \u2013 iOS 27.0", "iPhone 17 Pro")
-    assert _title_is("iPhone 17 Pro \u2013 iOS 27.0", "iPhone 17 Pro", "27.0")
-    assert not _title_is("bw-ios27rc-b \u2013 iOS 27.0", "bw-ios27rc")
-    assert not _title_is("iPhone 17 Pro \u2013 iOS 26.5", "iPhone 17 Pro", "27.0")
-    assert _title_is("iPhone 17 Pro", "iPhone 17 Pro")
-
-
-def test_contiguous_splits_on_gaps():
-    assert _contiguous([1, 2, 3, 7, 8, 20]) == [[1, 2, 3], [7, 8], [20]]
-    assert _contiguous([1, 3, 5], gap=2) == [[1, 3, 5]]
-    assert _contiguous([]) == []
-
-
-def test_widest_gap_is_between_runs():
-    assert _widest_gap([[0, 1], [5, 6], [20, 21]]) == (7, 19)
-    assert _widest_gap([[0, 1]]) is None
-
-
-def test_screen_box_finds_the_gap_between_two_dark_walls():
-    """A synthetic Device Hub window: dark bezel walls around a bright screen."""
-    h, w = 400, 300
-    dark = np.zeros((h, w), dtype=bool)
-    dark[:, :40] = True  # left wall
-    dark[:, 260:] = True  # right wall
-    dark[:50, :] = True  # top wall
-    dark[350:, :] = True  # bottom wall
-    dark[100:110, 120:130] = True  # a dark patch in the wallpaper, inside the screen
-    assert _screen_box(dark) == (40, 50, 259, 349)
-
-
-def test_screen_box_with_no_walls_is_none():
-    assert _screen_box(np.zeros((100, 100), dtype=bool)) is None
+def test_the_module_imports_with_neither_xcode_nor_idb_on_path(tmp_path):
+    """The architecture rule, as a test: nothing runs at import time."""
+    r = subprocess.run(
+        [sys.executable, "-c", "import shortcut_forge_lib.sim.harness as h; print(h.IDB)"],
+        capture_output=True,
+        text=True,
+        env={"PATH": str(tmp_path), "PYTHONPATH": str(SRC)},
+        check=False,
+    )
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "idb"
 
 
 def keyed_archive(objects):
@@ -89,49 +54,6 @@ def test_plist_strips_the_version_byte_and_tolerates_junk():
     assert _plist(b"\x01" + raw) == {"a": 1}
     assert _plist(b"not a plist") is None
     assert _plist(None) is None
-
-
-def blue_screenshot(buttons, size=(1206, 2622)):
-    """A device screenshot with iOS-blue rectangles where `buttons` says."""
-    w, h = size
-    img = np.full((h, w, 3), 255, dtype=np.uint8)
-    for x0, y0, x1, y1 in buttons:
-        img[y0:y1, x0:x1] = (0, 122, 255)
-    return Image.fromarray(img)
-
-
-def test_blue_buttons_finds_wide_blue_rectangles_bottom_last():
-    sim = Simulator("FAKE")
-    img = blue_screenshot([(100, 2300, 1100, 2400), (100, 2450, 1100, 2550)])
-    boxes = sim.blue_buttons(img)
-    assert len(boxes) == 2
-    assert boxes[0][1] < boxes[1][1]
-    _x0, y0, _x1, y1 = max(boxes, key=lambda b: (b[3], b[2]))
-    assert 2440 <= y0 <= 2460
-    assert 2540 <= y1 <= 2560
-
-
-def test_blue_buttons_ignores_the_tall_shortcut_tile_and_narrow_shapes():
-    sim = Simulator("FAKE")
-    img = blue_screenshot([(400, 800, 800, 1300), (100, 2300, 300, 2400)])  # tall tile, narrow button
-    assert sim.blue_buttons(img) == []
-
-
-def test_keycodes_cover_digits_and_lowercase():
-    for ch in "0123456789abcdefghijklmnopqrstuvwxyz ":
-        assert ch in KEYCODES
-
-
-def test_host_attribute_is_lazy(monkeypatch):
-    calls = []
-    monkeypatch.setattr(harness, "_detect_host", lambda: calls.append(1) or "detected")
-    monkeypatch.setattr(harness, "_HOST", None)
-    assert harness.host() == "detected"
-    assert harness.host() == "detected"
-    assert calls == [1]
-    assert harness.HOST == "detected"
-    with pytest.raises(AttributeError):
-        _ = harness.no_such_name
 
 
 def _fake_simctl(monkeypatch, reads: list[str]) -> list[tuple[str, ...]]:
@@ -246,6 +168,18 @@ def fake_idb(tmp_path, monkeypatch):
     use.log = lambda: log.read_text().splitlines() if log.exists() else []
     use.fail_once = lambda: monkeypatch.setenv("IDB_FAIL_ONCE", str(tmp_path / "failed"))
     return use
+
+
+def test_tap_takes_device_points(fake_idb):
+    sim = fake_idb("library")
+    sim.tap(201, 437)
+    assert fake_idb.log()[-1] == f"ui tap --udid {UDID} 201 437"
+
+
+def test_type_text_is_one_call_with_no_keycode_table(fake_idb):
+    sim = fake_idb("library")
+    sim.type_text("Wi-Fi 123")
+    assert fake_idb.log()[-1] == f"ui text --udid {UDID} Wi-Fi 123"
 
 
 def test_elements_parses_what_idb_printed(fake_idb):
@@ -555,6 +489,54 @@ def test_confirm_clears_the_keyboard_and_never_taps_blind(fake_idb, monkeypatch)
     assert set(pressed) <= {"Close", "Continue"}, f"confirm tapped something it should not have: {pressed}"
 
 
+def test_answer_prompt_returns_false_when_no_dialog_came_up(fake_idb):
+    """The one case where a missing dialog is an answer rather than a failure."""
+    sim = fake_idb("library")
+    assert sim.answer_prompt("424242", timeout=0.01) is False
+
+
+def test_answer_prompt_requires_the_field_to_hold_what_was_typed(fake_idb, monkeypatch):
+    sim = fake_idb("library")
+    field = idb.Element(9, "TextArea", None, "999", idb.Frame(23, 123, 356, 114), ())
+    monkeypatch.setattr(Simulator, "at", lambda self, x, y: field)
+    with pytest.raises(harness.SimulatorError, match="'999'"):
+        sim.answer_prompt("424242")
+
+
+def test_answer_prompt_can_expect_a_value_other_than_what_was_typed(fake_idb, monkeypatch):
+    """One consumer test types a leading zero on purpose, to prove it survives."""
+    sim = fake_idb("library")
+    field = idb.Element(9, "TextArea", None, "12345", idb.Frame(23, 123, 356, 114), ())
+    monkeypatch.setattr(Simulator, "at", lambda self, x, y: field)
+    monkeypatch.setattr(Simulator, "press", lambda self, *labels: labels[0])
+    monkeypatch.setattr(Simulator, "_clear_overlay", lambda self, tree: False)
+    assert sim.answer_prompt("012345", expect="12345") is True
+
+
+def test_the_ask_seed_does_not_mistake_the_librarys_search_bar_for_the_dialog(fake_idb, monkeypatch):
+    """The search bar spans the Ask seed, and it belongs to the app rather than the runner.
+
+    Measured: the library's search field runs from y 168 to 212 and the Ask
+    seed is (201, 203), so a hit test there finds it whenever the dialog is not
+    up — which is most of the several seconds after a run starts. The runner
+    draws its dialog in another process, so the pid is what tells them apart:
+    the Ask field reports a different pid from the Application element, while
+    the setup sheet's field, which Shortcuts draws itself, reports the same one.
+    Without that check `answer_prompt` types the answer into the search bar and
+    reports that it answered the prompt.
+    """
+    sim = fake_idb("library")
+    front = sim.frontmost_pid()
+    search = idb.Element(front, "TextField", "Search", None, idb.Frame(16, 168, 370, 44), ())
+    monkeypatch.setattr(Simulator, "at", lambda self, x, y: search)
+    assert sim.answer_prompt("424242", timeout=0.05) is False
+
+
+def test_cancel_prompt_is_false_when_there_was_nothing_to_cancel(fake_idb):
+    sim = fake_idb("library")
+    assert sim.cancel_prompt(timeout=0.01) is False
+
+
 def test_prepare_refuses_a_companion_that_may_be_from_another_xcode(fake_idb, monkeypatch):
     sim = fake_idb("library")
     monkeypatch.setenv("DEVELOPER_DIR", "/Applications/Xcode-beta.app/Contents/Developer")
@@ -579,6 +561,14 @@ def test_preparing_a_device_that_is_not_booted_never_opens_device_hub(fake_idb, 
     sim.prepare()
     assert any(c.startswith("xcrun simctl boot") for c in calls)
     assert "wait" in calls
+
+
+def test_prepare_window_still_works_and_warns(fake_idb, monkeypatch):
+    sim = fake_idb("library")
+    monkeypatch.setattr(Simulator, "_is_booted", lambda self: True)
+    monkeypatch.setattr(Simulator, "wait_booted", lambda self, timeout=180: None)
+    with pytest.warns(DeprecationWarning, match="prepare"):
+        sim.prepare_window()
 
 
 def test_install_returns_false_when_the_shortcut_is_already_there(fake_idb, monkeypatch, tmp_path):

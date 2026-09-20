@@ -24,7 +24,7 @@ import pytest
 
 from shortcut_forge_lib.plist import write_xml
 from shortcut_forge_lib.sim.harness import Simulator
-from shortcut_forge_lib.sim.probes import SETUP_PROBE_PLACEHOLDER, setup_probe
+from shortcut_forge_lib.sim.probes import SETUP_PROBE_PLACEHOLDER, ask_probe, setup_probe
 from shortcut_forge_lib.toolchain import sign
 
 pytestmark = pytest.mark.integration
@@ -75,3 +75,26 @@ def test_answering_the_setup_question(sim, tmp_path):
         )
     else:
         assert value == ANSWER, f"iOS {version} stored {value!r} instead of the typed answer"
+
+
+def test_the_runners_dialogs_are_found_where_the_seeds_say(sim, tmp_path):
+    """The seed table, exercised on a device instead of against a capture.
+
+    Nothing else reaches it. The setup canary raises no consent, and the unit
+    tests replay a capture recorded once — so without this, the positions the
+    whole dialog tier depends on are proven only against the recording of
+    themselves. `ask_probe` raises all three of the runner's dialogs.
+
+    On a device that has already granted its consents, `clear_prompts` finds
+    nothing and the test still proves the two seeds that matter most: the Ask
+    field and its *Done*. Run it on an erased device to exercise the rest.
+    """
+    name = f"ZZ Ask {uuid.uuid4().hex[:8]}"
+    path = sign(write_xml(ask_probe(name), tmp_path / f"{name}.xml"), name=name, output_dir=tmp_path)
+    assert sim.install(path, expect_name=name), f"{name} did not install"
+    sim.terminate_shortcuts()
+    time.sleep(1.5)
+    sim.run_shortcut(name)
+    assert sim.answer_prompt(ANSWER), "no Ask dialog appeared where ASK_FIELD says it is"
+    pressed = sim.clear_prompts()
+    assert not sim.prompt_up(), f"a dialog is still up after clearing {pressed}"

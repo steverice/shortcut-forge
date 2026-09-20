@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """Drive the iOS Simulator well enough to install and run a Shortcut.
 
-Everything here was established by experiment against a booted iOS 27 sim; the
-non-obvious findings are recorded in docs/simulator-harness.md. The three that shape this file:
+Everything here was established by experiment against a booted iOS 27 device;
+the non-obvious findings are in docs/simulator-harness.md. The four that shape
+this file:
 
   * A shortcut is installed by opening it as a *host* file URL. Simulator
     processes see the Mac's filesystem, so `file:///Users/...` resolves.
     `shortcuts://import-shortcut` is iCloud-only and will not take a local file.
-  * A synthesized click needs a MouseMoved event first and ClickState set, or
-    the cursor moves and nothing is pressed.
-  * Consent prompts ("allow this shortcut to connect to localhost") block the
-    run. The affirmative button is always the bottom-most iOS-blue one, which
-    is enough to dismiss every prompt shape without reading any text.
-
-Xcode 27 deleted Simulator.app and replaced it with Device Hub, which changed
-every one of those clicks' addresses but none of their logic. See the _Host
-classes below for what differs and docs/simulator-harness.md for how it was established.
+  * The device is driven through idb, which injects touches into it directly:
+    no window, no screen mapping, no Accessibility permission, and no Device
+    Hub — quitting Device Hub shuts down every booted simulator, so the harness
+    never opens it.
+  * Every tree query idb offers walks the frontmost application and stops,
+    while Shortcuts runs shortcuts out of process. So the Ask for Input dialog,
+    the consent alerts and the output-permission sheet are invisible to a tree
+    query and are found by hit test instead. See `find_button`.
+  * Consent prompts block a run, and one left pending makes the *next* run
+    finish in two seconds with nothing to show — which from outside is exactly
+    what a dropped run URL looks like. `clear_prompts` after every run.
 """
 
 from __future__ import annotations
@@ -30,75 +33,14 @@ import time
 import urllib.parse
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
-import Quartz as _Quartz
 from PIL import Image
 
-from shortcut_forge_lib.sim import ax, idb
+from shortcut_forge_lib.sim import idb
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-# pyobjc populates the Quartz namespace lazily and ships no stubs, so every
-# attribute on it is unresolved to a type checker. One cast here instead of an
-# ignore on each of the twenty call sites.
-Quartz = cast("Any", _Quartz)
-
-# iOS system blue, as rendered on the alert buttons.
-BLUE_MIN_B = 200
-BLUE_MAX_R = 110
-BLUE_MIN_SPREAD = 110  # blue channel must lead red by this much
-BUTTON_MIN_W = 360  # device px; a half-width alert button
-# US virtual keycodes. The Simulator forwards raw HID codes to the guest, so
-# these — not unicode strings — are what actually reach a text field. Enough
-# for a 6-digit code and the word "resend".
-KEYCODES = {
-    "0": 29,
-    "1": 18,
-    "2": 19,
-    "3": 20,
-    "4": 21,
-    "5": 23,
-    "6": 22,
-    "7": 26,
-    "8": 28,
-    "9": 25,
-    "a": 0,
-    "b": 11,
-    "c": 8,
-    "d": 2,
-    "e": 14,
-    "f": 3,
-    "g": 5,
-    "h": 4,
-    "i": 34,
-    "j": 38,
-    "k": 40,
-    "l": 37,
-    "m": 46,
-    "n": 45,
-    "o": 31,
-    "p": 35,
-    "q": 12,
-    "r": 15,
-    "s": 1,
-    "t": 17,
-    "u": 32,
-    "v": 9,
-    "w": 13,
-    "x": 7,
-    "y": 16,
-    "z": 6,
-    " ": 49,
-}
-
-BUTTON_H_RANGE = (70, 220)  # excludes the tall shortcut tile on
-# the import sheet, which is also blue
-
-
-DARK_SUM = 150  # r+g+b below this is bezel, or a dark background
 
 IDB = "idb"
 """Found on PATH, like the validator and the signer. `brew trust facebook/fb && brew install facebook/fb/idb`."""
@@ -154,130 +96,6 @@ def _run(*args: str, check: bool = True, **kw: Any) -> subprocess.CompletedProce
     return subprocess.run(args, capture_output=True, text=True, check=check, **kw)
 
 
-def _osa(script: str) -> str:
-    r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
-    if r.returncode:
-        raise SimulatorError(r.stderr.strip())
-    return r.stdout.strip()
-
-
-def _mouse_click(x: float, y: float, settle: float = 0.7) -> None:
-    """A click the guest actually feels.
-
-    A synthesized click needs a MouseMoved event first and ClickState set, or
-    the cursor moves and nothing is pressed.
-    """
-    pt = Quartz.CGPointMake(x, y)
-
-    def post(kind: int, click_state: int | None = None) -> None:
-        ev = Quartz.CGEventCreateMouseEvent(
-            None,
-            kind,
-            pt,
-            Quartz.kCGMouseButtonLeft,
-        )
-        # Pin the modifiers off. A posted event otherwise picks up whatever the
-        # system currently believes is held, and a stray Command turns a click
-        # into a Command-click — which in Device Hub's sidebar adds to the
-        # selection instead of replacing it, silently gathering up devices.
-        Quartz.CGEventSetFlags(ev, 0)
-        if click_state:
-            Quartz.CGEventSetIntegerValueField(
-                ev,
-                Quartz.kCGMouseEventClickState,
-                click_state,
-            )
-        Quartz.CGEventPost(Quartz.kCGHIDEventTap, ev)
-
-    post(Quartz.kCGEventMouseMoved)
-    time.sleep(0.2)
-    post(Quartz.kCGEventLeftMouseDown, 1)
-    time.sleep(0.1)
-    post(Quartz.kCGEventLeftMouseUp, 1)
-    time.sleep(settle)
-
-
-def _type_mac(text: str) -> None:
-    """Type into a Mac control — Device Hub's sidebar search, not the guest.
-
-    Unicode strings work here. They do not work on the device, which is why
-    Simulator.type_text spells everything out in virtual keycodes instead.
-    """
-    for ch in text:
-        for down in (True, False):
-            ev = Quartz.CGEventCreateKeyboardEvent(None, 0, down)
-            Quartz.CGEventSetFlags(ev, 0)
-            Quartz.CGEventKeyboardSetUnicodeString(ev, len(ch), ch)
-            Quartz.CGEventPost(Quartz.kCGHIDEventTap, ev)
-            time.sleep(0.02)
-        time.sleep(0.04)
-
-
-def _press_escape() -> None:
-    """Clear a focused search field.
-
-    Deliberately not Command-A then Delete. Command-A is Select All, and if the
-    click that was meant to focus the field missed, it selects every device in
-    the sidebar instead; Delete on a device list is worse still. Escape does
-    nothing harmful wherever it lands.
-    """
-    for down in (True, False):
-        ev = Quartz.CGEventCreateKeyboardEvent(None, 53, down)
-        Quartz.CGEventSetFlags(ev, 0)
-        Quartz.CGEventPost(Quartz.kCGHIDEventTap, ev)
-        time.sleep(0.03)
-    time.sleep(0.15)
-
-
-def _title_is(title: str, name: str, version: str = "") -> bool:
-    """Does this window title belong to exactly this device?
-
-    A prefix test is not enough on its own: "bw-ios27rc" is a prefix of
-    "bw-ios27rc-b", and matching loosely points the whole harness at a
-    different device while every check downstream still passes — taps land,
-    screenshots come back, and the run reports on a device it never touched.
-    The name has to end at a boundary.
-    """
-    if not title.startswith(name):
-        return False
-    rest = title[len(name) :]
-    return (not rest or rest[0] == " ") and version in rest
-
-
-def _screen_box(dark: np.ndarray, wall: float = 0.9, gap: int = 2) -> tuple[int, int, int, int] | None:
-    """The device screen: the gap between the two walls of dark either side.
-
-    The bezel reads dark in both system appearances. In dark mode so does the
-    window background, and in light mode it does not — but that difference
-    cannot hurt, because merging the background into the bezel only makes the
-    wall thicker and never moves its *inner* edge, which is the edge being
-    measured. A column counts as wall when it is dark for almost a whole band
-    of rows, which sidebar text and toolbar glyphs never are.
-
-    Dark patches in the wallpaper make extra walls, but they fall between the
-    outer two rather than outside them, so the widest interior gap is still the
-    screen.
-    """
-    h, _w = dark.shape
-    band = dark[int(h * 0.15) : int(h * 0.85)]
-    cols = np.where(band.sum(axis=0) / band.shape[0] > wall)[0]
-    span = _widest_gap(_contiguous(cols, gap=gap))
-    if span is None:
-        return None
-    x0, x1 = span
-    rows = np.where(dark[:, x0 : x1 + 1].sum(axis=1) / (x1 - x0 + 1) > wall)[0]
-    span = _widest_gap(_contiguous(rows, gap=gap))
-    if span is None:
-        return None
-    return (x0, span[0], x1, span[1])
-
-
-def _widest_gap(runs: list[list[int]]) -> tuple[int, int] | None:
-    """The widest space *between* runs, or None if there are fewer than two."""
-    gaps = [(runs[i][-1] + 1, runs[i + 1][0] - 1) for i in range(len(runs) - 1)]
-    return max(gaps, key=lambda g: g[1] - g[0]) if gaps else None
-
-
 def _slug(label: str) -> str:
     """A label as a filename fragment, for the screenshot a failure keeps."""
     return "".join(c if c.isalnum() else "-" for c in label.lower()).strip("-") or "button"
@@ -299,411 +117,6 @@ def _is_key(e: idb.Element) -> bool:
     a letter list would not see that keyboard at all.
     """
     return e.type == "Key" or "KeyboardKey" in e.traits
-
-
-# -- the Mac app that draws the device --------------------------------------
-#
-# Xcode 27 deleted Simulator.app. Device Hub replaces it, showing simulators and
-# real devices together in one window with a sidebar, and it differs in every
-# way this harness cares about: which process AppleScript has to address, which
-# menu connects the hardware keyboard, whether a window for a given device
-# exists at all, and how device pixels map to screen points. Simulator.app had
-# Point Accurate and a bezel toggle, which made that mapping exact arithmetic on
-# the window frame. Device Hub has neither, so the screen has to be found in
-# pixels inside the bezel it always draws.
-#
-# Everything that differs lives in one of the two classes below. Only the Device
-# Hub path is exercised now — Xcode 27 leaves no Simulator.app to test against.
-# The Simulator.app path is the code that produced the support matrix in
-# docs/simulator-harness.md, moved here rather than rewritten.
-
-
-def _has_window(sim: Simulator) -> bool:
-    """Whether the host has a window for this device yet; a missing one raises, so it is caught here."""
-    try:
-        sim.window_rect()
-    except SimulatorError:
-        return False
-    return True
-
-
-class _Host:
-    """What this harness needs from whichever app is showing the device.
-
-    Windows are addressed by title and menu items by whatever `keyboard_item`
-    holds: an AppleScript reference for Simulator.app, which System Events
-    can see, and a path of menu titles for Device Hub, which it cannot.
-    """
-
-    proc: str | None = None  # the app's process name, for messages
-    keyboard_item: Any = None  # menu item that connects the hardware keyboard
-
-    def __init__(self, app: Path) -> None:
-        self.app = app
-
-    def launch(self) -> None:
-        _run("open", "-a", str(self.app))
-
-    def activate(self) -> None:
-        raise NotImplementedError
-
-    def select(self, sim: Simulator) -> None:
-        """Make a window for this device exist. Runs before focus_window."""
-
-    def configure(self, sim: Simulator) -> None:
-        """Per-window display settings, if this host has any."""
-
-    def mapping(self, sim: Simulator, device_size: tuple[int, int]) -> tuple[float, float, float]:
-        """(origin_x, origin_y, screen points per device pixel)."""
-        raise NotImplementedError
-
-    # -- windows and menus ---------------------------------------------
-    def front_title(self) -> str:
-        """The frontmost window's title, or "" when there is none."""
-        raise NotImplementedError
-
-    def window_titles(self) -> list[str]:
-        raise NotImplementedError
-
-    def window_frame(self, title: str) -> tuple[int, int, int, int]:
-        """Raise the window with this title and return (x, y, width, height) in screen points."""
-        raise NotImplementedError
-
-    def menu_item(self, item: Any) -> tuple[bool, str | None]:
-        """(exists, mark_char) for a menu item; (False, None) when it is absent."""
-        raise NotImplementedError
-
-    def menu_click(self, item: Any) -> bool:
-        """Click a menu item. False when the frontmost window's menu has no such item."""
-        raise NotImplementedError
-
-
-class _SimulatorApp(_Host):
-    """Xcode 26 and earlier, driven through System Events."""
-
-    proc = "Simulator"
-    keyboard_item = (
-        'menu item "Connect Hardware Keyboard" of menu 1 of menu '
-        'item "Keyboard" of menu 1 of menu bar item "I/O" of '
-        "menu bar 1"
-    )
-    WINDOW_MENU = 'menu 1 of menu bar item "Window" of menu bar 1'
-
-    def activate(self) -> None:
-        _osa('tell application "Simulator" to activate')
-
-    def _tell(self, script: str) -> str:
-        return _osa(f'tell application "System Events" to tell process "{self.proc}" to {script}')
-
-    def front_title(self) -> str:
-        try:
-            return self._tell("return name of window 1")
-        except SimulatorError:
-            return ""
-
-    def window_titles(self) -> list[str]:
-        raw = self._tell("return name of every window")
-        return [t.strip() for t in raw.split(",")] if raw else []
-
-    def window_frame(self, title: str) -> tuple[int, int, int, int]:
-        q = title.replace('"', '\\"')
-        self._tell(f'perform action "AXRaise" of window "{q}"')
-        pos = self._tell(f'return position of window "{q}"')
-        size = self._tell(f'return size of window "{q}"')
-        x, y = (int(v) for v in pos.split(", "))
-        w, h = (int(v) for v in size.split(", "))
-        return x, y, w, h
-
-    def menu_item(self, item: Any) -> tuple[bool, str | None]:
-        # Menu contents depend on the frontmost window, and a menu item that is
-        # not there raises rather than returning empty — so absence has to be
-        # caught rather than tested.
-        try:
-            v = self._tell(f'return value of attribute "AXMenuItemMarkChar" of {item}')
-        except SimulatorError:
-            return False, None
-        return True, (None if v in ("", "missing value") else v)
-
-    def menu_click(self, item: Any) -> bool:
-        try:
-            self._tell(f"click {item}")
-            return True
-        except SimulatorError:
-            return False
-
-    def select(self, sim: Simulator) -> None:
-        # Simulator opens a window per booted device by itself; it can just be
-        # windowless for a few seconds after a boot.
-        deadline = time.time() + 60
-        while time.time() < deadline:
-            if _has_window(sim):
-                return
-            time.sleep(2)
-        raise SimulatorError("Simulator never opened a window for this device")
-
-    def configure(self, sim: Simulator) -> None:
-        """Point Accurate + no bezels makes device px -> screen points exact.
-
-        Applied tolerantly: another device kind may not offer these, and a
-        missing item is worth a note rather than a crash.
-        """
-        if not sim.menu_click(f'menu item "Point Accurate" of {self.WINDOW_MENU}'):
-            warnings.warn(
-                "note: no Point Accurate for this window; taps fall back to the window's own scale", stacklevel=2
-            )
-        time.sleep(0.8)
-        bezels = f'menu item "Show Device Bezels" of {self.WINDOW_MENU}'
-        exists, marked = sim.menu_item(bezels)
-        if exists and marked:
-            sim.menu_click(bezels)
-            time.sleep(1.0)
-
-    def mapping(self, sim: Simulator, device_size: tuple[int, int]) -> tuple[float, float, float]:
-        dw, dh = device_size
-        wx, wy, ww, wh = sim.window_rect()
-        ppp = ww / dw
-        return wx, wy + (wh - dh * ppp), ppp
-
-
-class _DeviceHub(_Host):
-    """Xcode 27 and later, driven through the accessibility API by pid.
-
-    Not through System Events: on macOS 27.0 it lists Device Hub with a unix
-    id of 0, no windows and no menu bar, under either of the app's names, and
-    the AX API reached by pid sees all three. See `sim/ax.py`.
-    """
-
-    proc = "DeviceHub"
-    keyboard_item = ("Device", "Keyboard", "Simulate Hardware Keyboard")
-    HOME = ("Controls", "Home")
-    # Offsets from the window's top-left corner. Nothing in the sidebar reaches
-    # the accessibility tree — the split view reports zero children, so there is
-    # no row to name and no field to address — which leaves position as the only
-    # handle there is. Every click is checked against the window title
-    # afterwards, so a miss is loud rather than a tap into the wrong device.
-    SEARCH_FIELD = (128, 74)
-    FIRST_ROW = (128, 145)
-    ROW_PITCH = 46
-    ROWS_TO_TRY = 8
-
-    def __init__(self, app: Path) -> None:
-        super().__init__(app)
-        self._measured: dict[tuple[tuple[int, int, int, int], tuple[int, int]], tuple[float, float, float]] = {}
-
-    # -- the app, through the accessibility tree -----------------------
-    def _app(self) -> ax.App:
-        app = ax.App.running(self.app)
-        if app is None:
-            raise SimulatorError("Device Hub is not running")
-        return app
-
-    def launch(self) -> None:
-        # `open` returns before the app has a window, and a Device Hub that was
-        # left running with its window closed gets no new one from a plain
-        # `open`; the window is what everything below addresses, so wait for it.
-        _run("open", "-a", str(self.app))
-        deadline = time.time() + 30
-        while time.time() < deadline:
-            app = ax.App.running(self.app)
-            if app is not None and app.windows():
-                return
-            time.sleep(1.0)
-        raise SimulatorError("Device Hub launched but never showed a window")
-
-    def activate(self) -> None:
-        self._app().activate()
-
-    def front_title(self) -> str:
-        return self._app().front_title()
-
-    def window_titles(self) -> list[str]:
-        return [title for title, _w in self._app().windows()]
-
-    def _window(self, title: str) -> Any:
-        # A device can be popped out into a window of its own, which carries
-        # the same title as the main window showing it. The main window is the
-        # one with the sidebar, and the larger of the two.
-        app = self._app()
-        matches = [w for t, w in app.windows() if t == title]
-        if not matches:
-            raise SimulatorError(f"no Device Hub window titled {title!r}")
-        return max(matches, key=lambda w: app.frame(w)[2] * app.frame(w)[3])
-
-    def window_frame(self, title: str) -> tuple[int, int, int, int]:
-        window = self._window(title)
-        ax.raise_window(window)
-        return ax.App.frame(window)
-
-    def menu_item(self, item: Any) -> tuple[bool, str | None]:
-        element = self._app().menu_item(item)
-        if element is None:
-            return False, None
-        return True, ax.App.mark(element)
-
-    def menu_click(self, item: Any) -> bool:
-        element = self._app().menu_item(item)
-        return element is not None and ax.press(element)
-
-    # -- picking the device --------------------------------------------
-    def select(self, sim: Simulator) -> None:
-        """Point Device Hub's one window at this device.
-
-        There is a single window and it shows whichever device the sidebar has
-        selected, so "no window for this device" is the ordinary state rather
-        than a failure. Filtering by name usually leaves one row, but a name is
-        not unique — the same model exists on every installed runtime — so the
-        rows are tried in turn and the window title decides.
-        """
-        name, version = sim.device_label()
-        if self._shows(name, version):
-            return
-        self.activate()
-        time.sleep(1.0)
-        wx, wy, _, _ = self._frame()
-        # Click, Escape, click again. Escape clears whatever the field holds,
-        # but on an empty field it moves focus to the "+" button instead —
-        # and the name typed next then opens that button's menu and picks an
-        # entry by its letters (measured on macOS 27.0: it landed on "Apple
-        # TV…" and opened the New Simulator sheet). The second click puts the
-        # focus back on the now-empty field either way.
-        _mouse_click(wx + self.SEARCH_FIELD[0], wy + self.SEARCH_FIELD[1], settle=0.4)
-        _press_escape()
-        _mouse_click(wx + self.SEARCH_FIELD[0], wy + self.SEARCH_FIELD[1], settle=0.4)
-        _type_mac(name)
-        time.sleep(1.2)
-        for row in range(self.ROWS_TO_TRY):
-            _mouse_click(wx + self.FIRST_ROW[0], wy + self.FIRST_ROW[1] + row * self.ROW_PITCH, settle=0.8)
-            if self._shows(name, version):
-                return
-        raise SimulatorError(
-            f"could not select {name} ({version}) in Device Hub's sidebar; the window is showing {self._title()!r}"
-        )
-
-    def _title(self) -> str:
-        return self.front_title()
-
-    def _shows(self, name: str, version: str) -> bool:
-        return _title_is(self._title(), name, version)
-
-    def _frame(self) -> tuple[int, int, int, int]:
-        """The main window — the one with the sidebar — which is the largest."""
-        app = self._app()
-        windows = [w for _t, w in app.windows()]
-        if not windows:
-            raise SimulatorError("Device Hub has no window")
-        return app.frame(max(windows, key=lambda w: app.frame(w)[2] * app.frame(w)[3]))
-
-    def press_home(self, sim: Simulator) -> None:
-        if not self.menu_click(self.HOME):
-            raise SimulatorError("no Home item in Device Hub's Controls menu")
-        time.sleep(1.5)
-
-    # -- where the screen is -------------------------------------------
-    def configure(self, sim: Simulator) -> None:
-        # The mapping is read off the bezel, and anything dark to the screen's
-        # own edge reads as more bezel — so measure on the home screen, once, at
-        # the start of a run rather than in the middle of one.
-        self.press_home(sim)
-        self.mapping(sim, sim.image().size)
-
-    def mapping(self, sim: Simulator, device_size: tuple[int, int]) -> tuple[float, float, float]:
-        key = (sim.window_rect(), tuple(device_size))
-        if key not in self._measured:
-            self._measured[key] = self._measure(sim, key[0], device_size)
-        return self._measured[key]
-
-    def _measure(
-        self,
-        sim: Simulator,
-        rect: tuple[int, int, int, int],
-        device_size: tuple[int, int],
-        tries: int = 5,
-    ) -> tuple[float, float, float]:
-        """Measure, with patience. A device that booted seconds ago is still
-        drawing, and a half-drawn screen has no bezel to find yet. The last
-        failure keeps its screenshot and names it, because "could not find the
-        bezel" tells you nothing on its own.
-        """
-        for _attempt in range(tries):
-            self.activate()  # a capture of a window behind iTerm2 is
-            time.sleep(0.4)  # a capture of iTerm2
-            try:
-                return self._measure_once(sim, rect, device_size)
-            except SimulatorError as e:
-                last = e
-                time.sleep(2.0)
-        keep = (sim.artifacts or Path(tempfile.gettempdir())) / "measure-failed.png"
-        _run("cp", str((sim.artifacts or Path(tempfile.gettempdir())) / "_measure.png"), str(keep), check=False)
-        raise SimulatorError(f"{last} (window as captured: {keep})")
-
-    def _measure_once(
-        self, sim: Simulator, rect: tuple[int, int, int, int], device_size: tuple[int, int]
-    ) -> tuple[float, float, float]:
-        """Find the device screen in the window, in screen points."""
-        wx, wy, ww, wh = rect
-        # Clamp the capture to the part of the window that is actually on the
-        # display, width included. Clamping only the origin leaves the region
-        # running off the far edge by however much was trimmed, and whatever
-        # window sits behind there gets measured as bezel.
-        ox, oy = max(wx, 0), max(wy, 0)
-        cw, ch = ww - (ox - wx), wh - (oy - wy)
-        shot = (sim.artifacts or Path(tempfile.gettempdir())) / "_measure.png"
-        _run("screencapture", "-x", "-o", f"-R{ox},{oy},{cw},{ch}", str(shot))
-        im = Image.open(shot).convert("RGB")
-        # `screencapture -R` takes a rect in points and writes *pixels*, so on a
-        # Retina display the image is twice the size of the window it captured.
-        # Quartz click coordinates are points, so every measurement has to come
-        # back through this scale or taps land at half the intended offset.
-        scale = im.width / cw
-        px = np.asarray(im).astype(int).sum(axis=2)
-
-        box = _screen_box(px < DARK_SUM)
-        if box is None:
-            raise SimulatorError("no device screen in the window — is it showing a device at all?")
-        x0, y0, x1, y1 = box
-        sw, sh = (x1 - x0 + 1) / scale, (y1 - y0 + 1) / scale
-        dw, dh = device_size
-        if not 0.97 <= (sw / sh) / (dw / dh) <= 1.03:
-            raise SimulatorError(
-                f"measured a {sw:.0f}x{sh:.0f} screen for a {dw}x{dh} device. "
-                f"Something dark to the screen's own edges — the dimmed "
-                f"backdrop behind a sheet — has probably swallowed it."
-            )
-        ppp = ((sw / dw) + (sh / dh)) / 2
-        # Fit on the centres — the rounded corners cost a pixel at each edge.
-        cx = ox + (x0 + x1) / 2 / scale
-        cy = oy + (y0 + y1) / 2 / scale
-        return cx - dw / 2 * ppp, cy - dh / 2 * ppp, ppp
-
-
-def _detect_host() -> _Host:
-    dev = Path(_run("xcode-select", "--print-path").stdout.strip())
-    simulator = dev / "Applications" / "Simulator.app"
-    if simulator.exists():
-        return _SimulatorApp(simulator)
-    device_hub = dev.parent / "Applications" / "DeviceHub.app"
-    if device_hub.exists():
-        return _DeviceHub(device_hub)
-    raise SimulatorError(
-        f"neither Simulator.app nor DeviceHub.app under {dev} — is a full "
-        f"Xcode selected? xcode-select --print-path says {dev}"
-    )
-
-
-_HOST: _Host | None = None
-
-
-def host() -> _Host:
-    global _HOST
-    if _HOST is None:
-        _HOST = _detect_host()
-    return _HOST
-
-
-def __getattr__(name: str) -> _Host:
-    if name == "HOST":
-        return host()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class Simulator:
@@ -812,10 +225,26 @@ class Simulator:
         return _run("pgrep", "-f", f"idb_companion --udid {self.udid}", check=False).returncode == 0
 
     def erase(self) -> None:
-        """Full clean slate. Also drops the trusted root cert, so re-add it."""
+        """Full clean slate. Also drops the trusted root cert, so re-add it.
+
+        The companion goes too. It is keyed by UDID alone and survives the
+        device it was driving, so the run after an erase starts from a known
+        state rather than from whatever the old one still believes.
+        """
         _run("xcrun", "simctl", "shutdown", self.udid, check=False)
+        self.drop_companion()
         _run("xcrun", "simctl", "erase", self.udid)
         self.boot()
+
+    def prepare_window(self) -> None:
+        """Deprecated alias of `prepare()`. There is no window any more."""
+        warnings.warn(
+            "prepare_window() is now prepare(): the harness drives the device through idb and never "
+            "opens a window for it",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.prepare()
 
     def add_root_cert(self, pem: str | Path) -> None:
         _run("xcrun", "simctl", "keychain", self.udid, "add-root-cert", str(pem))
@@ -1111,18 +540,36 @@ class Simulator:
         return next((e for e in self._tree() if e.type in FIELD_TYPES), None)
 
     def _wait_for_field(self, timeout: float) -> idb.Element | None:
-        """Poll the Ask dialog's seed until its field answers. None when no dialog came up.
+        """Poll the Ask dialog's seed until *its* field answers. None when no dialog came up.
 
         The dialog belongs to another process, so this is a hit test, not a
         tree read — and it is the one place a missing dialog is an answer
         rather than a failure, because a caller asks "was there a prompt?".
+
+        The pid is what tells the dialog's field from one of the frontmost
+        app's own, and it is not optional. Measured: the library's search bar
+        runs from y 168 to 212 and the Ask seed is (201, 203), so a hit test
+        there finds the search bar whenever the dialog is not up — which is
+        most of the several seconds after a run starts. The Ask field reports a
+        different pid from the Application element; the setup sheet's field,
+        which Shortcuts draws itself, reports the same one. Without this check
+        `answer_prompt` taps the search bar and types the answer into it.
         """
         w, h = self.screen_size()
         x, y = int(w * ASK_FIELD[0]), int(h * ASK_FIELD[1])
         deadline = time.time() + timeout
         while time.time() < deadline:
             seen = self.at(x, y)
-            if seen is not None and seen.type in FIELD_TYPES:
+            # `frontmost_pid()` is read here rather than once before the loop,
+            # and only when there is a candidate to judge. `run_shortcut` is
+            # preceded by `terminate_shortcuts`, so Shortcuts comes back as a
+            # *new* process: a pid read before the poll captures whatever was
+            # frontmost before the relaunch — SpringBoard, measured at 10418 in
+            # one trace — and every element of the new Shortcuts process then
+            # differs from it, which accepts the search bar all over again. The
+            # short circuit keeps the cost to one extra call per candidate
+            # rather than one per second of waiting.
+            if seen is not None and seen.type in FIELD_TYPES and seen.pid != self.frontmost_pid():
                 return seen
             time.sleep(1.0)
         return None
@@ -1241,55 +688,9 @@ class Simulator:
         self.screenshot(f"moved-{_slug(label)}.png")
         raise SimulatorError(f"{label!r} moved or vanished before it could be tapped")
 
-    # -- window geometry ------------------------------------------------
-    @staticmethod
-    def menu_item(item: Any) -> tuple[bool, str | None]:
-        """(exists, mark_char) for a menu item of the host app; (False, None) when it is absent."""
-        return host().menu_item(item)
-
-    @staticmethod
-    def menu_click(item: Any) -> bool:
-        """Click a menu item of the host app. False when this window's menu has no such item."""
-        return host().menu_click(item)
-
-    def focus_window(self, timeout: int = 20) -> str:
-        """Make this device's window frontmost, and confirm it got there.
-
-        Raising is not the same as arriving. Another booted simulator can stay
-        in front, and then every menu below belongs to the wrong device — a
-        visionOS window has no "Show Device Bezels" at all, so the harness used
-        to die on a missing menu item rather than on anything real.
-        """
-        name, _version = self.device_label()
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            self.window_rect()  # matches by title, and AXRaises it
-            front = host().front_title()
-            if _title_is(front, name):
-                return front
-            time.sleep(0.5)
-        raise SimulatorError(
-            f"could not bring {name} to the front; another simulator window is holding focus (frontmost was {front!r})"
-        )
-
-    def prepare_window(self) -> None:
-        """Get this device on screen and make its pixels tappable.
-
-        Every menu the host offers applies to the frontmost window, so this
-        device's window is made to exist, brought to the front and *verified*
-        before anything is clicked. What "made to exist" and "tappable" mean
-        differ per host — see the _Host classes.
-        """
-        host().launch()
-        host().activate()
-        host().select(self)
-        self.focus_window()
-        time.sleep(0.3)
-        host().configure(self)
-        self.ensure_hardware_keyboard()
-
+    # -- device info ------------------------------------------------------
     def device_label(self) -> tuple[str, str]:
-        """(name, os version) as the Simulator window titles them."""
+        """(name, os version), read from `simctl`."""
         out = _run("xcrun", "simctl", "list", "devices", "--json").stdout
         for runtime, devices in json.loads(out)["devices"].items():
             for d in devices:
@@ -1297,26 +698,6 @@ class Simulator:
                     version = runtime.rsplit(".", 1)[-1].replace("iOS-", "").replace("-", ".")
                     return d["name"], version
         raise SimulatorError(f"device {self.udid} not found")
-
-    def window_rect(self) -> tuple[int, int, int, int]:
-        """Locate *this* device's Simulator window.
-
-        More than one simulator can be booted at once, and "window 1" is then
-        whichever happens to be frontmost — which silently sends every tap to
-        the wrong device, or off-screen entirely. Match the title instead.
-        """
-        name, version = self.device_label()
-        titles = host().window_titles()
-        match = next((t for t in titles if _title_is(t, name, version)), None)
-        if match is None:
-            match = next((t for t in titles if _title_is(t, name)), None)
-        if match is None:
-            raise SimulatorError(f"no {host().proc} window for {name} ({version}); saw {titles}")
-        return host().window_frame(match)
-
-    def _mapping(self, device_size: tuple[int, int]) -> tuple[float, float, float]:
-        """(origin_x, origin_y, screen points per device pixel)."""
-        return host().mapping(self, device_size)
 
     # -- screen ---------------------------------------------------------
     def screenshot(self, name: str | None = None) -> Path:
@@ -1333,137 +714,74 @@ class Simulator:
         return Image.open(self.screenshot(name)).convert("RGB")
 
     # -- input ----------------------------------------------------------
-    def tap(self, px: int, py: int, device_size: tuple[int, int] | None = None, settle: float = 0.7) -> None:
-        """Tap by device-screenshot pixel coordinates."""
-        if device_size is None:
-            device_size = Image.open(self.screenshot()).size
-        host().activate()
-        time.sleep(0.35)
-        ox, oy, ppp = self._mapping(device_size)
-        _mouse_click(ox + px * ppp, oy + py * ppp, settle=settle)
+    def tap(self, x: float, y: float, settle: float = 1.0) -> None:
+        """Tap at a device point.
+
+        Points, not screenshot pixels: idb's frames, its taps and
+        `simctl io screenshot` share one coordinate space, three pixels to the
+        point on an iPhone 17 Pro. Nothing is mapped and no window is involved.
+        Prefer `press()`, which names what it is tapping first.
+        """
+        self._idb(*idb.tap_args(self.udid, x, y))
+        time.sleep(settle)
 
     def type_text(self, text: str) -> None:
-        """Type into the focused field, one virtual keycode at a time.
+        """Type into whatever has focus.
 
-        CGEventKeyboardSetUnicodeString does nothing here: the Simulator passes
-        raw keycodes through, so every character arrives as whatever keycode 0
-        is and "123456" lands in the field as "Aaaaaa".
+        One call, and no hardware-keyboard menu to toggle: idb hands the string
+        to the device. `Wi-Fi 123` arrives verbatim, capital and hyphen intact.
         """
-        self.ensure_hardware_keyboard()
-        host().activate()
-        time.sleep(0.3)
-        for ch in text:
-            code = KEYCODES.get(ch.lower())
-            if code is None:
-                raise SimulatorError(f"no keycode mapped for {ch!r}")
-            for down in (True, False):
-                Quartz.CGEventPost(
-                    Quartz.kCGHIDEventTap,
-                    Quartz.CGEventCreateKeyboardEvent(None, code, down),
-                )
-                time.sleep(0.03)
-            time.sleep(0.06)
+        self._idb(*idb.text_args(self.udid, text))
         time.sleep(0.5)
 
-    def answer_prompt(self, text: str) -> bool:
-        """Fill an Ask for Input dialog and commit it.
+    def answer_prompt(self, text: str, *, expect: str | None = None, timeout: float = 45) -> bool:
+        """Fill the runner's Ask for Input dialog and commit it. False when no dialog came up.
 
-        Two traps here. The field is *not* focused when the dialog appears, so
-        typing without tapping it first goes nowhere and the answer stays
-        empty. And the Done button is iOS blue, so the generic
-        tap-the-affirmative would submit that empty answer — which this
-        shortcut reads as "send me another code", five times over.
+        The field is not focused when the dialog appears, so it is tapped
+        first; typing without that used to go nowhere and leave the answer
+        empty, which this shortcut reads as "send me another code" — five
+        times over, because the blue-button rule then pressed *Done* on it.
+
+        The answer is read back before *Done* is pressed. `expect` is for the
+        case where the field is known to normalize what was typed; passing it
+        makes the difference deliberate instead of invisible.
         """
-        img = self.image()
-        boxes = self.blue_buttons(img)
-        if not boxes:
+        want = text if expect is None else expect
+        field = self._wait_for_field(timeout)
+        if field is None:
             return False
-        w, h = img.size
-        done = max(boxes, key=lambda b: (b[3], b[2]))
-        # The text field sits directly above the button row.
-        self.tap(int(w * 0.25), int(done[1] - h * 0.12), device_size=img.size)
-        time.sleep(0.8)
-        self.type_text(text)
-        time.sleep(0.5)
-        return self.tap_affirmative()
-
-    def cancel_prompt(self) -> bool:
-        """Dismiss an Ask for Input dialog with its Cancel button. True if there was one.
-
-        Cancel is not blue, so it cannot be found the way Done is. It sits in
-        the same row, mirrored across the sheet's center line — measured on
-        iOS 27 at the same height as Done and at the width minus Done's own
-        center — so it is reached by reflecting Done's box.
-        """
-        img = self.image()
-        boxes = self.blue_buttons(img)
-        if not boxes:
-            return False
-        w, _h = img.size
-        x0, y0, x1, y1 = max(boxes, key=lambda b: (b[3], b[2]))
-        self.tap(w - (x0 + x1) // 2, (y0 + y1) // 2, device_size=img.size)
+        x, y = field.frame.center()
+        self._idb(*idb.tap_args(self.udid, x, y))
+        time.sleep(1.0)
+        if text:
+            self._idb(*idb.text_args(self.udid, text))
+        # An empty answer has nothing to read back, and an empty field reports
+        # its placeholder as `AXValue` — "Text" on this dialog, measured — so
+        # comparing against "" would wait out the timeout and then raise about
+        # a field that is behaving normally. One consumer test submits an empty
+        # answer on purpose. A caller that passes `expect` has stated what it
+        # wants to see, so that is always checked.
+        if text or expect is not None:
+            got = self._settle_value(lambda: self.at(x, y), want)
+            if got != want:
+                self.screenshot("answer-readback.png")
+                raise SimulatorError(f"the Ask field holds {got!r} after typing {text!r}; expected {want!r}")
+        # The dialog sits well above where the keyboard draws, so this is
+        # usually a no-op — but a first-run typing tip can cover it on a device
+        # that has never been typed into.
+        self._clear_overlay(self._tree())
+        self.press("Done")
         return True
 
-    def ensure_hardware_keyboard(self) -> None:
-        """Connect the hardware keyboard, re-applying it even if already checked.
+    def cancel_prompt(self, timeout: float = 45) -> bool:
+        """Dismiss an Ask for Input dialog with its Cancel button. False when there was none.
 
-        Synthesized keystrokes only reach the device through the hardware
-        keyboard. An erase resets the device side of this while the Simulator
-        menu can still show it checked, and the giveaway is the software
-        keyboard appearing — at which point typing silently goes nowhere. So
-        cycle the setting rather than trusting the tick.
+        Cancel used to be unreachable: it is not blue, so it was found by
+        reflecting Done's box across the sheet's center line. It is a label now.
         """
-        item = host().keyboard_item
-        exists, marked = self.menu_item(item)
-        if not exists:
-            # Unlike the display settings this one is not optional: without it
-            # synthesized keystrokes reach nothing. Say which window owns the
-            # menu, because that is the actual problem.
-            raise SimulatorError(
-                f"no hardware-keyboard item in {host().proc}'s menus — the "
-                f"frontmost window is probably another device; call "
-                f"focus_window() first"
-            )
-        clicks = 2 if marked else 1
-        for _ in range(clicks):
-            self.menu_click(item)
-            time.sleep(0.7)
-
-    # -- finding the affirmative button ---------------------------------
-    def blue_buttons(self, img: Image.Image | None = None) -> list[tuple[int, int, int, int]]:
-        """Boxes of iOS-blue filled buttons, top-to-bottom then left-to-right.
-
-        Used for both "Add Shortcut" on the import sheet and "Allow" /
-        "Always Allow" on consent prompts — in every layout the button we want
-        is the bottom-most one, so no text recognition is needed.
-        """
-        img = img or self.image()
-        a = np.asarray(img).astype(int)
-        r, _g, b = a[:, :, 0], a[:, :, 1], a[:, :, 2]
-        mask = (b > BLUE_MIN_B) & (r < BLUE_MAX_R) & ((b - r) > BLUE_MIN_SPREAD)
-
-        boxes = []
-        rows = np.where(mask.sum(axis=1) > 100)[0]
-        for band in _contiguous(rows, gap=8):
-            y0, y1 = band[0], band[-1]
-            if not (BUTTON_H_RANGE[0] <= y1 - y0 <= BUTTON_H_RANGE[1]):
-                continue
-            cols = np.where(mask[y0 : y1 + 1].sum(axis=0) > (y1 - y0) * 0.4)[0]
-            for run in _contiguous(cols, gap=20):
-                x0, x1 = run[0], run[-1]
-                if x1 - x0 < BUTTON_MIN_W:
-                    continue
-                boxes.append((int(x0), int(y0), int(x1), int(y1)))
-        return boxes
-
-    def tap_affirmative(self, img: Image.Image | None = None) -> bool:
-        """Tap the bottom-most blue button. True if there was one."""
-        img = img or self.image()
-        boxes = self.blue_buttons(img)
-        if not boxes:
+        if self._wait_for_field(timeout) is None:
             return False
-        x0, y0, x1, y1 = max(boxes, key=lambda bx: (bx[3], bx[2]))
-        self.tap((x0 + x1) // 2, (y0 + y1) // 2, device_size=img.size)
+        self.press("Cancel")
         return True
 
     # -- shortcuts ------------------------------------------------------
@@ -1635,16 +953,3 @@ def _keyed_lookup(archive: Any, *keys: str) -> str | None:
                 if isinstance(value, str) and value != "$null":
                     return value
     return None
-
-
-def _contiguous(indices: np.ndarray, gap: int = 1) -> list[list[int]]:
-    """Split a sorted index array into runs separated by more than `gap`."""
-    runs, current = [], []
-    for i in indices:
-        if current and i - current[-1] > gap:
-            runs.append(current)
-            current = []
-        current.append(int(i))
-    if current:
-        runs.append(current)
-    return runs
