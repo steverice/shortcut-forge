@@ -355,6 +355,12 @@ runtime that changes it fails a unit test rather than a run.
 
 None of this is documented by Apple, and most of it failed silently first.
 
+Three of the findings below — **Tapping**, **Finding the button** and
+**Typing** — describe the window-driving harness that idb replaced, and are
+kept because they are the record of what a GUI-driven simulator cost, not
+because they describe this code. Each says so where it stands, and names what
+took over. Everything else here is current.
+
 **Installing.** `shortcuts://import-shortcut?url=…` only accepts iCloud links —
 it rejects anything else *before* fetching it, so a local file cannot be
 imported that way. What does work is opening the file as a **host** file URL:
@@ -364,29 +370,40 @@ normal import sheet. **The library name comes from the filename**, not from
 `WFWorkflowName`, so the signed files have to be named exactly what the
 wrappers call.
 
-**Tapping.** A synthesized click needs a `MouseMoved` event first *and*
-`kCGMouseEventClickState` set; with either missing the cursor moves to the right
-place and nothing is pressed. Under Simulator.app coordinates are exact once it
-is set to *Window → Point Accurate* with *Show Device Bezels* off: the device
-screen then starts at the window origin plus a 52pt title bar, at 3 device
-pixels per point, and the harness sets both itself. Device Hub offers neither,
-so there the screen is measured inside the bezel — see above.
+**Tapping (retired).** `tap()` passes device points straight to `idb ui tap`:
+one coordinate space, no window, no mapping and no synthesized events. Through
+a window it took all of the following. A synthesized click needs a `MouseMoved`
+event first *and* `kCGMouseEventClickState` set; with either missing the cursor
+moves to the right place and nothing is pressed. Under Simulator.app the
+coordinates are exact once it is set to *Window → Point Accurate* with *Show
+Device Bezels* off: the device screen then starts at the window origin plus a
+52pt title bar, at 3 device pixels per point, and the harness set both itself.
+Device Hub offers neither, so there the screen had to be measured inside the
+bezel — see above.
 
-**Finding the button.** In every prompt shape the button we want is the
-bottom-most iOS-blue one — "Allow", "Always Allow", "Add Shortcut" — so the
-harness finds blue rectangles by color and taps the lowest. No text
-recognition, and it survives light and dark mode. Tall blue shapes are filtered
-out because the shortcut tile on the import sheet is also blue.
+**Finding the button (retired).** Buttons are found by label now:
+`find_button` and `press` hit-test a measured `SEEDS` position for the runner's
+dialogs, and look everything else up in the frontmost tree by exact label,
+confirming it with a hit test before anything taps it. Nothing is identified by
+its color. What that replaced was a color rule — in every prompt shape the
+button wanted was the bottom-most iOS-blue one, "Allow", "Always Allow", "Add
+Shortcut", so the harness found blue rectangles and tapped the lowest. It
+needed no text recognition and survived light and dark mode, and tall blue
+shapes were filtered out because the shortcut tile on the import sheet is blue
+too.
 
-**One trap in that rule:** the *Ask for Input* dialog's **Done** button is blue
-too, so blind-tapping submits it empty — which this shortcut reads as "resend me
-a code", five times over, and then gives up. Tests that expect a prompt use
+That rule's trap is why the label check is not optional now: the *Ask for
+Input* dialog's **Done** button is blue as well, so tapping the lowest blue
+rectangle submitted it empty — which this shortcut reads as "resend me a code",
+five times over, and then gives up. Tests that expect a prompt call
 `answer_prompt()` and stop the generic clearing once traffic has started.
 
-**Typing.** `CGEventKeyboardSetUnicodeString` does nothing here. The Simulator
-passes raw HID keycodes through to the guest, so every character arrives as
-whatever keycode 0 is: typing `123456` puts `Aaaaaa` in the field. Real US
-virtual keycodes are the only thing that works.
+**Typing (retired).** `type_text()` is one `idb ui text` call and the keycode
+table is gone; text arrives verbatim, with no autocapitalization. Through a
+window it was another matter. `CGEventKeyboardSetUnicodeString` does nothing
+there, because the Simulator passes raw HID keycodes through to the guest, so
+every character arrives as whatever keycode 0 is: typing `123456` puts `Aaaaaa`
+in the field. Real US virtual keycodes were the only thing that worked.
 
 **HTTPS.** `simctl keychain <udid> add-root-cert` installs a CA into the
 device's trust store, which is what lets Get Contents of URL talk to the mock.
