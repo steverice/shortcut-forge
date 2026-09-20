@@ -615,3 +615,37 @@ def test_install_stops_at_the_question_page_when_asked_to(fake_idb, monkeypatch,
         ),
     )
     assert sim.install(tmp_path / "Setup Canary.shortcut", skip_setup=False) is True
+
+
+def test_install_prefers_skip_setup_when_the_question_page_offers_both(fake_idb, monkeypatch, tmp_path):
+    """Pressing *Add Shortcut* here would commit an unanswered setup question.
+
+    Both buttons are on the question page — measured in
+    `setup-question/all-ax.json`, where *Add Shortcut* comes first in the tree —
+    so only the order `install` asks in keeps the questions. A shortcut
+    installed with its questions unanswered holds the placeholder in every
+    credential action, installs in one tap, and looks perfectly healthy; the
+    first sign it went wrong is a user whose install never works.
+    """
+    sim = fake_idb("setup-question")
+    pressed: list[str] = []
+    library: list[str] = []
+    monkeypatch.setattr(Simulator, "library", lambda self: list(library))
+    monkeypatch.setattr(Simulator, "clear_prompts", lambda self, *a, **kw: [])
+
+    def tap(self, e, **kw):
+        pressed.append(e.label)
+        library.append("Setup Canary")  # the import lands once the sheet is confirmed
+        return e.label or ""
+
+    monkeypatch.setattr(Simulator, "_tap", tap)
+    real_run = harness._run
+    monkeypatch.setattr(
+        harness,
+        "_run",
+        lambda *args, **kw: (
+            subprocess.CompletedProcess(args, 0, "", "") if args[0] == "xcrun" else real_run(*args, **kw)
+        ),
+    )
+    assert sim.install(tmp_path / "Setup Canary.shortcut") is True
+    assert pressed == ["Skip Setup"]
