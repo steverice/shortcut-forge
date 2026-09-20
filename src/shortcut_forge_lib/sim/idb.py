@@ -10,12 +10,14 @@ Only argv shapes and parsing live here, the way `guest/tart.py` holds tart's,
 so both are tested against captured output with no simulator. Three of the
 choices below are measurements rather than preferences:
 
-  * **`--api` is always passed.** The two backends see different screens: the
-    default lists a presented sheet — the setup question's heading, its field,
-    *Add Shortcut*, *Skip Setup* — and the `axbridge` backend lists the
-    navigation bar and each tile's Play button, 80 elements to the default's 8
-    on the library screen, without the sheet. idb's unspecified default is
-    assumed to be `ax` and not relied on.
+  * **`--api` is always passed.** The two backends return different trees, and
+    which one a caller wants depends on what it is looking for. The default
+    (`ax`) returns the frontmost *presentation* and little else: on the setup
+    question page, six elements — the heading, the text field, *Add Shortcut*
+    and *Skip Setup*. `axbridge` returns the whole window hierarchy, the
+    library underneath included, at 158 elements for the same screen, and it
+    does not report the text field at all. Measured on iOS 27.0, 2026-09-19.
+    idb's unspecified default is assumed to be `ax` and not relied on.
   * **`--match` is a substring search.** Its help says "elements whose
     --match-key contains this substring", so a caller wanting an exact label
     compares it again after parsing.

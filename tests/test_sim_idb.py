@@ -78,14 +78,39 @@ def test_a_point_capture_parses_into_one_element():
     assert e.frame.width > 0
 
 
-def test_only_one_backend_sees_the_presented_sheet():
-    """The measured limit the finder's fallback order rests on."""
-    ax = {e.label for e in idb.parse_elements(capture("setup-question", "all-ax.json"))}
-    bridge = {e.label for e in idb.parse_elements(capture("setup-question", "all-axbridge.json"))}
-    assert ("Add Shortcut" in ax) != ("Add Shortcut" in bridge)
-    assert "Add Shortcut" in ax, (
-        "the default backend stopped seeing a presented sheet; the finder asks it first because it does"
-    )
+def test_the_default_backend_is_the_sheet_and_axbridge_is_the_window_behind_it():
+    """Measured on iOS 27.0, and the reason the finder asks the default backend first.
+
+    The default backend returns the presented sheet and almost nothing else:
+    its heading, its text field, its two buttons. `axbridge` returns the whole
+    window hierarchy with the library underneath — twenty-odd times the
+    elements — and does not report the field at all, which is why
+    `_field_in_tree` reads the default tree.
+    """
+    ax = idb.parse_elements(capture("setup-question", "all-ax.json"))
+    bridge = idb.parse_elements(capture("setup-question", "all-axbridge.json"))
+    assert {"Add Shortcut", "Skip Setup"} <= {e.label for e in ax}
+    assert any(e.type in ("TextField", "TextArea") for e in ax)
+    assert len(ax) * 10 < len(bridge), f"the default backend should be the small tree: {len(ax)} vs {len(bridge)}"
+    assert not any(e.type in ("TextField", "TextArea") for e in bridge)
+
+
+def test_the_keyboard_hides_the_sheets_buttons_from_the_default_backend():
+    """Why `confirm` clears the keyboard before it looks for a button to press.
+
+    With the keyboard up, the default backend's tree is the field, the
+    keyboard's own Close, a predictive-text suggestion and thirty-seven letter
+    keys — and neither of the sheet's buttons. The keys arrive as ordinary
+    `Button`s with single-character labels here; `axbridge` types the same keys
+    as `Key`. Anything that recognizes the keyboard has to accept both.
+    """
+    ax = idb.parse_elements(capture("setup-question-keyboard", "all-ax.json"))
+    bridge = idb.parse_elements(capture("setup-question-keyboard", "all-axbridge.json"))
+    assert "Add Shortcut" not in {e.label for e in ax}
+    assert "Close" in {e.label for e in ax}
+    assert sum(1 for e in ax if e.label in ("q", "w", "e", "r", "t", "y")) == 6
+    assert not any(e.type == "Key" for e in ax)
+    assert any(e.type == "Key" for e in bridge)
 
 
 def test_center_is_the_middle_of_the_frame():
