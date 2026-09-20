@@ -84,8 +84,12 @@ SEEDS: tuple[tuple[str, float, float], ...] = (
 #: Where the runner's Ask for Input dialog puts its field.
 ASK_FIELD: tuple[float, float] = (0.500, 0.233)  # (201, 203)
 
-#: What a text field is called, in either backend.
-FIELD_TYPES = ("TextField", "TextArea")
+#: What a text field is called, in either backend. The same field carries a
+#: different type name in each: the setup sheet's is a `TextArea` in the
+#: default tree and a `TextView` in `axbridge`, at the identical frame and
+#: value — measured 2026-09-20, x8 y237.7 w386 h75. `_field_in_tree` reads
+#: whichever tree `_tree()` returns, so it has to know both names.
+FIELD_TYPES = ("TextField", "TextArea", "TextView")
 
 
 class SimulatorError(RuntimeError):
@@ -336,9 +340,8 @@ class Simulator:
         """The frontmost tree, from whichever backend can see this screen.
 
         The default backend is asked first: it returns the frontmost
-        presentation, and it is the only one that reports a text field. An
-        `axbridge` call costs about 4.5 s when it fails, so it is a fallback,
-        not a second opinion.
+        presentation, and an `axbridge` call costs about 4.5 s when it fails,
+        so it is a fallback, not a second opinion.
 
         What counts as "the default backend cannot see this screen" depends on
         whether the read was filtered. Unfiltered, one element means the

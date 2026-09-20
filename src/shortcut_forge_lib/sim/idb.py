@@ -15,8 +15,10 @@ choices below are measurements rather than preferences:
     (`ax`) returns the frontmost *presentation* and little else: on the setup
     question page, six elements — the heading, the text field, *Add Shortcut*
     and *Skip Setup*. `axbridge` returns the whole window hierarchy, the
-    library underneath included, at 158 elements for the same screen, and it
-    does not report the text field at all. Measured on iOS 27.0, 2026-09-19.
+    library underneath included, at 158 elements for the same screen. Both
+    report the sheet's text field, under different names — a `TextArea` in the
+    default tree, a `TextView` in `axbridge`, at the identical frame and value
+    — which is why `FIELD_TYPES` knows both. Measured on iOS 27.0, 2026-09-19.
     idb's unspecified default is assumed to be `ax` and not relied on.
   * **`--match` is a substring search.** Its help says "elements whose
     --match-key contains this substring", so a caller wanting an exact label

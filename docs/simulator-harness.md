@@ -12,11 +12,14 @@ first.
 
 - **An iOS 27 iPhone simulator.** Xcode → Settings → Components.
   `Simulator.find()` picks a booted one, or boots the first it finds.
-- **Accessibility permission** for the terminal running the tests: System
-  Settings → Privacy & Security → Accessibility. Taps are synthesized as real
-  mouse events, so without this the cursor moves and nothing is pressed.
-- Leave the device window alone while a run is going — the taps go to real
-  screen coordinates.
+- **`idb`**, on `PATH`: `brew trust facebook/fb && brew install
+  facebook/fb/idb`. It drives the device directly — injecting touches and
+  reading the accessibility tree over its own connection to the simulator —
+  so there is no window to find, no screen to map, and no Accessibility
+  permission to grant.
+- Nothing to do with the device window. The harness never opens Device Hub,
+  and a person running it alongside does no harm: idb's touches do not care
+  whether a window is showing the device.
 
 ## Simulator.app, or Device Hub
 
@@ -249,18 +252,18 @@ returned 80 elements to the default backend's 8, including the navigation bar
 and each tile's Play button, which the default backend drops. That is not the
 whole picture, though: the default backend returns the frontmost presentation
 and little else, while `axbridge` returns the whole window hierarchy. On the
-setup-question page the default backend gave six elements, including the
-sheet's text field — which `axbridge`, for all its 158 elements, sheet
-included, does not report at all. With the keyboard up, the gap changes shape
-rather than closing: the default backend drops the sheet's own buttons and
-reports the keyboard's keys as `Button`s, where `axbridge` types them as
-`Key`s.
+setup-question page the default backend gave six elements to `axbridge`'s 158,
+sheet included. Both carry the sheet's text field, but under different type
+names — a `TextArea` in the default tree, a `TextView` in `axbridge` — at the
+identical frame and value. With the keyboard up, the gap changes shape rather
+than closing: the default backend drops the sheet's own buttons and reports
+the keyboard's keys as `Button`s, where `axbridge` types them as `Key`s.
 
 **Quitting Device Hub shuts down every booted simulator**, as quitting
 Simulator.app did. A harness boots with `simctl boot` and never launches Device
-Hub. `boot()` in `sim/harness.py` still calls `host().launch()`, which opens it;
-that call goes. A person running Device Hub alongside does no harm, and idb's
-touches do not care whether a window is showing the device.
+Hub. `boot()` in `sim/harness.py` used to call `host().launch()`, which opened
+it; that call is gone. A person running Device Hub alongside does no harm, and
+idb's touches do not care whether a window is showing the device.
 
 **The output-permission sheet.** A run started by URL ends with "Allow … to
 output 1 text item?" (Don't Allow / Allow Once / Always Allow), because the URL
@@ -708,8 +711,8 @@ verb in `WorkflowKit`.
 
 | Symptom | Cause |
 |---|---|
-| `no Add Shortcut button appeared` | Accessibility permission, or the Simulator window is off-screen or obscured |
-| Taps land in the wrong place | Something re-enabled device bezels or changed the window scale; rerun, the harness resets both |
+| idb commands fail with `Failed to connect to companion` | A stale companion registration for the device. `idb disconnect <udid>` clears it and the next command spawns a fresh one — never `idb kill`, which kills every companion on the Mac |
+| A runner dialog (*Allow*, *Done*, *Cancel*, …) is never found | Its position isn't among `SEEDS` — a new iOS layout moved it. The failure leaves a screenshot in the artifacts directory showing where it actually is; measure it and add a row |
 | A test hangs then fails to settle | Look at the artifacts directory you gave `Simulator` — a prompt shape the harness did not recognize |
 | Everything fails after an erase | The CA is re-added automatically, but only on the run that erased |
-| `could not select … in Device Hub's sidebar` | Seen once, straight after an erase, with the terminal in front afterward: the search text never reached the field and no row click registered. Rerunning worked, and it didn't recur in two later runs. Bring Device Hub forward and rerun |
+| A field or button that should be on screen is reported missing | The tree query returned the screen *under* a runner dialog, not the dialog itself — every tree walk stops at the frontmost app, and the screen under a dialog satisfies that as readily as a dialog-free one. That is why the runner's dialogs are found by hit test (`describe-point`) at a `SEEDS` position instead of by tree lookup |

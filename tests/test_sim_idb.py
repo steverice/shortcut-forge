@@ -84,15 +84,17 @@ def test_the_default_backend_is_the_sheet_and_axbridge_is_the_window_behind_it()
     The default backend returns the presented sheet and almost nothing else:
     its heading, its text field, its two buttons. `axbridge` returns the whole
     window hierarchy with the library underneath — twenty-odd times the
-    elements — and does not report the field at all, which is why
-    `_field_in_tree` reads the default tree.
+    elements — and reports the same field too, under a different type name:
+    a `TextArea` in the default tree, a `TextView` in `axbridge`, at the
+    identical frame and value.
     """
     ax = idb.parse_elements(capture("setup-question", "all-ax.json"))
     bridge = idb.parse_elements(capture("setup-question", "all-axbridge.json"))
     assert {"Add Shortcut", "Skip Setup"} <= {e.label for e in ax}
-    assert any(e.type in ("TextField", "TextArea") for e in ax)
     assert len(ax) * 10 < len(bridge), f"the default backend should be the small tree: {len(ax)} vs {len(bridge)}"
-    assert not any(e.type in ("TextField", "TextArea") for e in bridge)
+    field = next(e for e in ax if e.type == "TextArea")
+    twin = next(e for e in bridge if e.type == "TextView")
+    assert (twin.frame, twin.value) == (field.frame, field.value), "the same field, named differently"
 
 
 def test_the_keyboard_hides_the_sheets_buttons_from_the_default_backend():
