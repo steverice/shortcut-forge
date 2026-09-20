@@ -219,6 +219,12 @@ def fake_idb(tmp_path, monkeypatch):
     binary = tmp_path / "idb"
     binary.write_text(FAKE_IDB)
     binary.chmod(0o755)
+    # A `pkill` that matches nothing, which is what it does on a machine with no
+    # companion running. Stubbed rather than real so that a unit test cannot
+    # signal a process on the developer's machine.
+    pkill = tmp_path / "pkill"
+    pkill.write_text('#!/bin/sh\necho "pkill $*" >> "$IDB_LOG"\nexit 1\n')
+    pkill.chmod(0o755)
     log = tmp_path / "calls.log"
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
     monkeypatch.setenv("IDB_LOG", str(log))
@@ -283,3 +289,22 @@ def test_screen_size_is_the_application_frame_and_is_read_once(fake_idb):
 def test_frontmost_pid_is_the_applications(fake_idb):
     sim = fake_idb("library")
     assert sim.frontmost_pid() == sim.elements()[0].pid
+
+
+def test_dropping_a_companion_kills_it_and_removes_its_registration(fake_idb):
+    """A companion outlives the device it drives and is keyed by UDID alone.
+
+    Both halves are needed: killing the process leaves a registration that the
+    next command tries to connect to, and disconnecting alone leaves the
+    process running under whichever Xcode spawned it.
+    """
+    sim = fake_idb("library")
+    sim.drop_companion()
+    assert fake_idb.log() == [f"pkill -f idb_companion --udid {UDID}", f"disconnect {UDID}"]
+
+
+def test_dropping_a_companion_never_uses_idb_kill(fake_idb):
+    """`idb kill` SIGKILLs every companion on the machine, including another session's."""
+    sim = fake_idb("library")
+    sim.drop_companion()
+    assert not any(c.startswith("kill") for c in fake_idb.log())

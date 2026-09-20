@@ -799,13 +799,22 @@ class Simulator:
     def _tree(self, *, match: str | None = None) -> list[idb.Element]:
         """The frontmost tree, from whichever backend can see this screen.
 
-        The default backend is asked first: it is the one that sees a presented
-        sheet, and an `axbridge` failure costs about 4.5 s. One element means
-        the Application and nothing under it, which is what the default backend
-        returns for a screen it cannot see into.
+        The default backend is asked first: it returns the frontmost
+        presentation, and it is the only one that reports a text field. An
+        `axbridge` call costs about 4.5 s when it fails, so it is a fallback,
+        not a second opinion.
+
+        What counts as "the default backend cannot see this screen" depends on
+        whether the read was filtered. Unfiltered, one element means the
+        Application and nothing under it. Filtered, the Application does not
+        carry a button's label, so any hit at all is a real hit — and asking
+        `axbridge` anyway would cost a call on the busiest path in the harness
+        and risk answering with an element from *behind* a presented sheet,
+        which `--match` cannot tell apart from the sheet's own.
         """
         found = self.elements(idb.AX, match=match)
-        if len(found) > 1:
+        enough = bool(found) if match is not None else len(found) > 1
+        if enough:
             return found
         other = self.elements(idb.AXBRIDGE, match=match)
         return other if len(other) > len(found) else found
