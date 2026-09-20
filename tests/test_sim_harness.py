@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import plistlib
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -525,6 +526,20 @@ def test_fill_raises_when_the_field_did_not_take_the_text(fake_idb):
         sim.fill("424242")
 
 
+def test_an_empty_answer_is_not_read_back_because_an_empty_field_shows_its_placeholder(fake_idb):
+    """`AXValue` carries the placeholder when a field has no content.
+
+    Measured: an untouched Ask field and an untouched setup-question field both
+    report `AXValue` of "Text", and neither carries a separate placeholder
+    attribute to tell it apart from real content. Comparing that against "" would
+    wait out the whole timeout and then raise about a field that is behaving
+    normally — and one consumer test submits an empty answer deliberately.
+    """
+    sim = fake_idb("setup-question")
+    assert sim.fill("") == ""
+    assert not any(c.startswith("ui text") for c in fake_idb.log())
+
+
 def test_confirm_presses_the_label_when_nothing_covers_it(fake_idb):
     sim = fake_idb("setup-question")
     assert sim.confirm("Add Shortcut") == "Add Shortcut"
@@ -546,3 +561,21 @@ def test_prepare_refuses_a_companion_that_may_be_from_another_xcode(fake_idb, mo
     monkeypatch.setattr(Simulator, "_companion_running", lambda self: True)
     with pytest.raises(harness.SimulatorError, match="drop_companion"):
         sim.prepare()
+
+
+def test_preparing_a_device_that_is_not_booted_never_opens_device_hub(fake_idb, monkeypatch):
+    """Quitting Device Hub shuts down every booted simulator, so the harness never opens it."""
+    sim = fake_idb("library")
+    calls: list[str] = []
+    monkeypatch.setattr(Simulator, "_is_booted", lambda self: False)
+    monkeypatch.setattr(Simulator, "wait_booted", lambda self, timeout=180: calls.append("wait"))
+    monkeypatch.setattr(
+        harness,
+        "_run",
+        lambda *args, **kw: calls.append(" ".join(args)) or subprocess.CompletedProcess(args, 0, "", ""),
+    )
+    # `raising=False` so this test outlives the task that deletes `host()`.
+    monkeypatch.setattr(harness, "host", lambda: pytest.fail("prepare() must never open Device Hub"), raising=False)
+    sim.prepare()
+    assert any(c.startswith("xcrun simctl boot") for c in calls)
+    assert "wait" in calls

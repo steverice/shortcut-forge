@@ -745,8 +745,8 @@ class Simulator:
 
     # -- lifecycle ------------------------------------------------------
     def boot(self) -> None:
+        """Boot the device. Never opens Device Hub — quitting it shuts down every simulator."""
         _run("xcrun", "simctl", "boot", self.udid, check=False)
-        host().launch()
         self.wait_booted()
 
     def wait_booted(self, timeout: int = 180) -> None:
@@ -999,8 +999,16 @@ class Simulator:
             raise SimulatorError(f"no text field in the frontmost app; it showed {self._labels()}")
         self._idb(*idb.tap_args(self.udid, *field.frame.center()))
         time.sleep(1.0)
-        if text:
-            self._idb(*idb.text_args(self.udid, text))
+        if not text:
+            # Nothing typed, so there is nothing to read back — and an empty
+            # field does not report itself as empty. `AXValue` carries the
+            # placeholder when a field has no content: both the Ask dialog and
+            # the setup sheet report "Text", with no separate placeholder
+            # attribute to tell them apart. Comparing that against "" would
+            # wait out the whole timeout and then raise about a field that is
+            # behaving normally.
+            return ""
+        self._idb(*idb.text_args(self.udid, text))
         got = self._settle_value(self._field_in_tree, text)
         if got != text:
             self.screenshot("fill-readback.png")
@@ -1080,9 +1088,11 @@ class Simulator:
             return False
         # The keyboard's own Close sits just above its top row of keys —
         # measured at y 482 with the keys starting at y 597, on an 874-point
-        # screen. Both bounds are needed: the import sheet carries a Close of
-        # its own at the top of the screen, and tapping that one dismisses the
-        # import instead of the keyboard.
+        # screen. Both bounds are needed: a sheet carries its own dismiss
+        # control at the top, where tapping it dismisses the sheet rather than
+        # the keyboard. The import sheet's sits at y 82, labeled *Cancel* in
+        # the capture, and a sheet that labels that control *Close* would be
+        # indistinguishable from the keyboard's without the lower bound.
         top_key = min(k.frame.y for k in keys)
         _w, h = self.screen_size()
         close = next(
