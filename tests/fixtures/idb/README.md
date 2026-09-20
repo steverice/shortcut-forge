@@ -63,16 +63,21 @@ beta, it committed the typed answer (`WFTextActionText` read back as
 `"424242"`). Neither run disagreed with the measured expectations in the
 module docstring.
 
-A direct measurement, run separately from the pytest suite on both devices
-(install with `skip_setup=False`, `fill("424242")`, then read the tree
-before calling `confirm`), found the same shape on both runtimes: the
-software keyboard was up and covering the sheet's buttons after `fill` — 33
-elements carrying the `KeyboardKey` trait, the same count `_is_key`'s
-docstring records — and `confirm` cleared it through the keyboard's own
-*Close* before finding *Add Shortcut*. No first-run typing tip appeared in
-either measurement. `SEEDS` (the consent-dialog hit-test positions) went
-unexercised in every run: installing this probe raises no consent prompt, so
-nothing here re-measured those fractions, and none needed correcting from
-what a prior capture already recorded.
+A separate measurement pass, outside the pytest suite, ran the same
+`install(skip_setup=False)` / `fill("424242")` sequence on each device and
+printed what the tree held immediately afterward, before calling `confirm`:
+`/tmp/canary-overlay-27-0.log` and `/tmp/canary-overlay-27-2.log`. Both logs
+show the identical shape: 33 elements carrying the `KeyboardKey` trait, *Add
+Shortcut* absent from that tree (the keyboard was covering it), and no
+*Continue* first-run tip present. `confirm` then reported pressing *Add
+Shortcut* on both devices — a button its own log shows was not yet in the
+tree it had to search, which is only possible if `_clear_overlay` took its
+keyboard-`Close` branch first, since the other branch it has (the *Continue*
+tip) is the one the same log shows was absent. `SEEDS` (the consent-dialog
+hit-test positions) went unexercised in every run today: installing this
+probe raises no consent prompt, so nothing here re-measured those fractions,
+and none needed correcting from what a prior capture already recorded.
 
-Logs: `/tmp/canary-27-0.log`, `/tmp/canary-27-2.log`.
+Logs: `/tmp/canary-27-0.log`, `/tmp/canary-27-2.log` (the pytest runs);
+`/tmp/canary-overlay-27-0.log`, `/tmp/canary-overlay-27-2.log` (the overlay
+measurement).
