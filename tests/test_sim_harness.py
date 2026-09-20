@@ -57,12 +57,18 @@ def test_plist_strips_the_version_byte_and_tolerates_junk():
 
 
 def _fake_simctl(monkeypatch, reads: list[str]) -> list[tuple[str, ...]]:
-    """Every command `set_pasteboard` runs, with `pbpaste` answering from `reads` in turn."""
+    """Every command `set_pasteboard` runs, with each `pbpaste` answering from `reads` in turn.
+
+    The device's reads come first. The Mac's own pasteboard is read once, last,
+    and only on the way to a raise, which is how the failure tells a device
+    that has stopped accepting syncs from a shell that never copied anything.
+    """
     calls: list[tuple[str, ...]] = []
 
     def run(*args: str, check: bool = True, **kw: object) -> object:
         calls.append(args)
-        out = reads.pop(0) if args[-2:-1] == ("pbpaste",) else ""
+        reading = args[-2:-1] == ("pbpaste",) or args == ("pbpaste",)
+        out = (reads.pop(0) if reads else "") if reading else ""
         return type("Done", (), {"stdout": out, "returncode": 0})()
 
     monkeypatch.setattr(harness, "_run", run)
@@ -79,11 +85,27 @@ def test_set_pasteboard_retries_until_the_read_back_agrees(monkeypatch):
     assert ("xcrun", "simctl", "pbsync", "host", "UDID") in calls
 
 
-def test_set_pasteboard_refuses_a_value_that_never_lands(monkeypatch):
-    _fake_simctl(monkeypatch, ["stale"] * 3)
+def test_a_pasteboard_that_never_lands_names_the_device_when_the_macs_own_is_fine(monkeypatch):
+    """A device up a long time stops accepting syncs, and `pbsync` reports the success it did not have.
 
-    with pytest.raises(harness.SimulatorError, match="sandboxed"):
-        Simulator("UDID").set_pasteboard("123456", attempts=3)
+    Measured 2026-09-20: it printed the byte count it had resolved and
+    `Sync complete` for six straight rounds while the device's pasteboard
+    stayed empty, and only a reboot fixed it. The old message asked whether the
+    shell was sandboxed, which sent a reader to check a shell that was working.
+    """
+    _fake_simctl(monkeypatch, ["", "", "", "", "", "", "123456"])
+
+    with pytest.raises(harness.SimulatorError, match="stopped accepting syncs") as raised:
+        Simulator("UDID").set_pasteboard("123456")
+    assert "sandbox" not in str(raised.value).lower()
+
+
+def test_a_pasteboard_the_mac_never_took_names_the_shell(monkeypatch):
+    """The other half of the same failure: a sandboxed shell copies nothing and says it worked."""
+    _fake_simctl(monkeypatch, ["", "", "", "", "", "", ""])
+
+    with pytest.raises(harness.SimulatorError, match="sandboxed shell"):
+        Simulator("UDID").set_pasteboard("123456")
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "idb"

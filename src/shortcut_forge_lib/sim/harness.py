@@ -336,6 +336,19 @@ class Simulator:
         agree. A sandboxed shell also reports success and copies nothing,
         which is why the read-back decides. Moved from brightwheel-checkin's
         integration suite, where the clipboard sign-in tests depend on it.
+
+        A device that has been up a long time stops accepting syncs at all, and
+        `pbsync` joins `pbcopy` in reporting a success it did not have.
+        Measured 2026-09-20: `simctl pbsync --verbose host <udid>` printed
+        `Resolved item ... to 13 bytes of data.` and `Sync complete.` while
+        `simctl pbpaste` answered *There are no items on the device's
+        pasteboard*, for every one of six rounds. Restarting the device's
+        `com.apple.coredevice.dtpasteboardd` did not fix it; shutting the
+        device down and booting it did, after which the first sync still landed
+        nothing and the second worked — so the retry above is right, and this
+        is not what it catches. The raise tells the two apart by reading the
+        Mac's own pasteboard, because saying "is the shell sandboxed?" to
+        someone whose shell is fine costs an hour.
         """
         got = None
         for _ in range(attempts):
@@ -346,7 +359,18 @@ class Simulator:
             if got == text:
                 return
             time.sleep(1.5)
-        raise SimulatorError(f"the device pasteboard reads {got!r} after copying {text!r}; is the shell sandboxed?")
+        host = _run("pbpaste", check=False).stdout
+        if host != text:
+            raise SimulatorError(
+                f"the Mac's own pasteboard reads {host!r} after copying {text!r}, so there was never anything "
+                f"to sync across. A sandboxed shell reports success and copies nothing."
+            )
+        raise SimulatorError(
+            f"the device pasteboard reads {got!r} after {attempts} rounds, while the Mac's holds {text!r}: "
+            f"this device has stopped accepting syncs. `xcrun simctl pbsync --verbose host {self.udid}` will "
+            f"print the byte count it resolved and `Sync complete` regardless, and restarting "
+            f"`com.apple.coredevice.dtpasteboardd` on the device does not help. Shut the device down and boot it."
+        )
 
     # -- idb ------------------------------------------------------------
     def _idb(self, *args: str, timeout: float = 60) -> str:
