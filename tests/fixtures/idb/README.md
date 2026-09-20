@@ -47,3 +47,32 @@ letter appear), but a fixed settle time after `idb ui text` is not always
 enough for the field's `AXValue` to have converged — `fill` and
 `answer_prompt` should poll the field until it stops changing rather than
 trust one read on a timer.
+
+## The canary, run for real (2026-09-20)
+
+`tests/test_sim_canary.py` ran against both runtimes it watches, each on the
+device named in the task brief, both still 402x874 points — the seed
+fractions held without correction. Runtimes, from `xcrun simctl list
+runtimes`: iOS 27.0 (27.0 - 24A434) and iOS 27.2 (27.2 - 24B5084k), matching
+the builds the module docstring already names. Both runs passed both tests.
+
+`test_answering_the_setup_question` took the branch the docstring predicts
+for each runtime: on iOS 27.0, confirming the setup-question page installed
+nothing — the probe never appeared in `ZSHORTCUT` at all — and on iOS 27.2
+beta, it committed the typed answer (`WFTextActionText` read back as
+`"424242"`). Neither run disagreed with the measured expectations in the
+module docstring.
+
+A direct measurement, run separately from the pytest suite on both devices
+(install with `skip_setup=False`, `fill("424242")`, then read the tree
+before calling `confirm`), found the same shape on both runtimes: the
+software keyboard was up and covering the sheet's buttons after `fill` — 33
+elements carrying the `KeyboardKey` trait, the same count `_is_key`'s
+docstring records — and `confirm` cleared it through the keyboard's own
+*Close* before finding *Add Shortcut*. No first-run typing tip appeared in
+either measurement. `SEEDS` (the consent-dialog hit-test positions) went
+unexercised in every run: installing this probe raises no consent prompt, so
+nothing here re-measured those fractions, and none needed correcting from
+what a prior capture already recorded.
+
+Logs: `/tmp/canary-27-0.log`, `/tmp/canary-27-2.log`.
