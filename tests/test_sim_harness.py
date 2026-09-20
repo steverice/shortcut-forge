@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from shortcut_forge_lib.sim import harness
+from shortcut_forge_lib.sim import harness, idb
 from shortcut_forge_lib.sim.harness import (
     KEYCODES,
     Simulator,
@@ -229,6 +229,7 @@ def fake_idb(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
     monkeypatch.setenv("IDB_LOG", str(log))
     monkeypatch.setattr(harness.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(Simulator, "screenshot", lambda self, name=None: tmp_path / (name or "shot.png"))
 
     def use(scene: str) -> Simulator:
         monkeypatch.setenv("IDB_SCENE", str(FIXTURES / scene))
@@ -308,3 +309,117 @@ def test_dropping_a_companion_never_uses_idb_kill(fake_idb):
     sim = fake_idb("library")
     sim.drop_companion()
     assert not any(c.startswith("kill") for c in fake_idb.log())
+
+
+def button(label: str, y: float = 300.0) -> idb.Element:
+    return idb.Element(99, "Button", label, None, idb.Frame(23, y, 356, 50), ("Button",))
+
+
+def test_a_dialog_label_is_probed_at_its_seeds_and_never_looked_up_in_the_tree(fake_idb):
+    """The screen under a runner dialog has a Done of its own, and so does the keyboard's return key."""
+    sim = fake_idb("ask-dialog")
+    found = sim.find_button("Done")
+    assert found is not None
+    assert found.label == "Done"
+    trees = [c for c in fake_idb.log() if c.startswith("ui describe-all")]
+    assert len(trees) == 1, f"only screen_size() may read the tree for a dialog label, saw {trees}"
+
+
+def test_a_seed_hit_counts_only_when_the_label_matches_exactly(fake_idb, monkeypatch):
+    """The output sheet stacks Allow Once where a two-button sheet puts Allow."""
+    sim = fake_idb("library")
+    monkeypatch.setattr(Simulator, "at", lambda self, x, y: button("Allow Once"))
+    assert sim.find_button("Allow") is None
+    assert sim.find_button("Allow Once") is not None
+
+
+def test_always_allow_is_tried_before_allow(fake_idb):
+    """A consent answered with Allow Once asks again on the next run; the persistent choice comes first."""
+    labels = [label for label, _fx, _fy in harness.SEEDS]
+    missing = [label for label in ("Always Allow", "Allow") if label not in labels]
+    assert not missing, (
+        f"the capture never saw {missing}: the device had already granted those consents. "
+        "Erase it and run tests/capture_idb_fixtures.py again."
+    )
+    assert labels.index("Always Allow") < labels.index("Allow")
+
+
+def test_a_tree_match_is_confirmed_by_a_hit_test_before_it_is_returned(fake_idb):
+    sim = fake_idb("setup-question")
+    found = sim.find_button("Add Shortcut")
+    assert found is not None
+    assert found.label == "Add Shortcut"
+    assert any(c.startswith("ui describe-point") for c in fake_idb.log()), (
+        "a tree match must be hit-tested at its center before anything taps it"
+    )
+
+
+def test_tree_trusts_a_single_filtered_hit_without_consulting_axbridge(fake_idb):
+    """`_find_in_tree` is the first caller that passes `match=`; a real hit must cost one call."""
+    sim = fake_idb("setup-question")
+    found = sim._tree(match="Add Shortcut")
+    assert any(e.label == "Add Shortcut" for e in found)
+    trees = [c for c in fake_idb.log() if c.startswith("ui describe-all")]
+    assert len(trees) == 1, f"a filtered hit must cost exactly one describe-all, saw {trees}"
+
+
+def test_tree_falls_back_to_axbridge_when_the_filtered_read_is_empty(fake_idb, monkeypatch):
+    """A filtered read that finds nothing must still try the other backend before giving up.
+
+    The captured fixtures never produce an empty `describe-all`, because every
+    scene's default-backend tree includes at least the Application element —
+    so this exercises the miss branch directly, at the `elements()` level,
+    rather than by asking a fixture to be something it is not.
+    """
+    sim = fake_idb("setup-question")
+    calls: list[str] = []
+
+    def elements(self: Simulator, backend: str = idb.AX, *, match: str | None = None) -> list[idb.Element]:
+        calls.append(backend)
+        return [] if backend == idb.AX else [button("Elsewhere")]
+
+    monkeypatch.setattr(Simulator, "elements", elements)
+    found = sim._tree(match="Add Shortcut")
+    assert calls == [idb.AX, idb.AXBRIDGE]
+    assert found == [button("Elsewhere")]
+
+
+def test_a_button_the_keyboard_hides_is_not_found(fake_idb):
+    """With the keyboard up the default tree drops the sheet's buttons altogether.
+
+    Measured, not assumed: `find_button` comes back empty because there is
+    nothing to find, and the keyboard is what `confirm` has to clear before
+    there is. If this ever fails, compare
+    `fixtures/idb/setup-question-keyboard/all-ax.json` against
+    `setup-question/all-ax.json` — the difference between them is the whole
+    reason `confirm` exists.
+    """
+    sim = fake_idb("setup-question-keyboard")
+    assert sim.find_button("Add Shortcut") is None
+    assert sim._keyboard_up(sim._tree())
+
+
+def test_press_taps_the_point_the_hit_test_returned(fake_idb):
+    sim = fake_idb("setup-question")
+    assert sim.press("Add Shortcut") == "Add Shortcut"
+    taps = [c for c in fake_idb.log() if c.startswith("ui tap")]
+    assert len(taps) == 1
+    x, y = taps[0].split()[-2:]
+    assert (FIXTURES / "setup-question" / f"point-{x}-{y}.json").exists(), (
+        "the tap landed somewhere no hit test had named"
+    )
+
+
+def test_press_raises_naming_what_was_on_screen(fake_idb):
+    sim = fake_idb("library")
+    with pytest.raises(harness.SimulatorError, match="Always Allow"):
+        sim.press("Always Allow")
+
+
+def test_a_moving_button_is_not_tapped(fake_idb, monkeypatch):
+    """A sheet mid-slide put Allow Once where Always Allow was about to be."""
+    sim = fake_idb("library")
+    frames = iter([button("Allow", 300.0), button("Allow", 320.0), button("Allow", 340.0), button("Allow", 360.0)])
+    monkeypatch.setattr(Simulator, "at", lambda self, x, y: next(frames, None))
+    with pytest.raises(harness.SimulatorError, match="moved or vanished"):
+        sim._tap(button("Allow", 300.0))

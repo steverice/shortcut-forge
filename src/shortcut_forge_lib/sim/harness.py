@@ -99,6 +99,48 @@ DARK_SUM = 150  # r+g+b below this is bezel, or a dark background
 IDB = "idb"
 """Found on PATH, like the validator and the signer. `brew trust facebook/fb && brew install facebook/fb/idb`."""
 
+#: The labels only the Shortcuts *runner* draws, in `com.apple.ShortcutsUI` —
+#: a different process from the frontmost app, which no tree query can reach.
+#: They are looked up by hit test at a measured position and never in the tree,
+#: because the frontmost tree has buttons by the same names: the screen under a
+#: dialog carries its own Done and Cancel, and the software keyboard's return
+#: key carries AXLabel "Done" as a Key.
+DONT_ALLOW = "Don\u2019t Allow"
+"""The device writes this label with a typographic apostrophe (U+2019), not the straight one.
+
+Written as an escape rather than as the character, because the two are
+indistinguishable in most editors and an exact-label comparison against the
+wrong one silently finds nothing. Measured 2026-09-19: it was the one label the
+first fixture capture never saw, because the capture asked for the straight
+form. Apostrophes are not normalized anywhere in the finder — a silent
+transformation would hide the next label that does not match for some other
+reason.
+"""
+
+DIALOG_LABELS = frozenset({"Done", "Cancel", "Allow", "Always Allow", "Allow Once", DONT_ALLOW})
+
+#: Where those dialogs put their buttons, as fractions of the screen, measured
+#: by `tests/capture_idb_fixtures.py` and recorded in `tests/fixtures/idb/`.
+#: Order matters: *Always Allow* is tried before *Allow*, because a consent
+#: answered with the other choice asks again on the next run. A dialog no seed
+#: finds raises with a screenshot rather than being swept for — a sweep costs
+#: 25 s or more, and the consumer polls for the *absence* of a dialog every
+#: second. Measuring the new shape once and adding a row here is the fix.
+SEEDS: tuple[tuple[str, float, float], ...] = (
+    ("Always Allow", 0.500, 0.665),  # (201, 581) on 402x874
+    ("Allow", 0.729, 0.200),  # (293, 174)
+    ("Allow Once", 0.500, 0.589),  # (201, 514)
+    (DONT_ALLOW, 0.271, 0.200),  # (108, 174)
+    ("Done", 0.729, 0.347),  # (293, 303)
+    ("Cancel", 0.271, 0.347),  # (108, 303)
+)
+
+#: Where the runner's Ask for Input dialog puts its field.
+ASK_FIELD: tuple[float, float] = (0.500, 0.233)  # (201, 203)
+
+#: What a text field is called, in either backend.
+FIELD_TYPES = ("TextField", "TextArea")
+
 
 class SimulatorError(RuntimeError):
     pass
@@ -230,6 +272,29 @@ def _widest_gap(runs: list[list[int]]) -> tuple[int, int] | None:
     """The widest space *between* runs, or None if there are fewer than two."""
     gaps = [(runs[i][-1] + 1, runs[i + 1][0] - 1) for i in range(len(runs) - 1)]
     return max(gaps, key=lambda g: g[1] - g[0]) if gaps else None
+
+
+def _slug(label: str) -> str:
+    """A label as a filename fragment, for the screenshot a failure keeps."""
+    return "".join(c if c.isalnum() else "-" for c in label.lower()).strip("-") or "button"
+
+
+def _is_key(e: idb.Element) -> bool:
+    """One key of the software keyboard, in either backend's vocabulary.
+
+    The default backend types the keys as ordinary `Button`s — the same type as
+    a sheet's own buttons — and marks them with a `KeyboardKey` trait.
+    `axbridge` types them `Key` and gives them no traits. Measured 2026-09-19
+    on the setup-question page: 33 elements carry the trait in the default
+    tree, 37 are typed `Key` in the other, and nothing outside a keyboard
+    carries the trait in any capture — the keyboard's own *Close* and its
+    predictive-text suggestion do not.
+
+    The trait rather than a list of letters, because the keyboard that matters
+    most here is the numeric one: the consumer's code prompt is six digits, and
+    a letter list would not see that keyboard at all.
+    """
+    return e.type == "Key" or "KeyboardKey" in e.traits
 
 
 # -- the Mac app that draws the device --------------------------------------
@@ -851,6 +916,124 @@ class Simulator:
     def _labels(self) -> list[str]:
         """What the frontmost app is showing, for an error message."""
         return [e.label for e in self._tree() if e.label][:15]
+
+    def _keyboard_up(self, tree: list[idb.Element]) -> bool:
+        """Is the software keyboard drawn in `tree`? `_is_key()` is what makes this exact."""
+        return any(_is_key(e) for e in tree)
+
+    # -- finding a button -------------------------------------------------
+    def find_button(self, *labels: str) -> idb.Element | None:
+        """The first of `labels` that is actually on screen, or None. Never a guess.
+
+        Two tiers, because idb's two blind spots are complementary:
+
+        1. A label in `DIALOG_LABELS` is hit-tested at each of its seed
+           positions, in `SEEDS` order. A hit counts only when it is a button
+           carrying exactly that label, which is what stops *Allow Once* from
+           answering a probe for *Allow*.
+        2. Everything else is looked up in the frontmost tree by exact label —
+           `--match` is a substring search, so the label is compared again —
+           and then confirmed by one hit test at its center. The confirmation
+           is not ceremony: the tree returns the screen *under* a runner dialog
+           as readily as the screen itself, and the keyboard covers a sheet's
+           own buttons after typing. Without it the harness taps into whatever
+           is actually there and reports success.
+
+        A miss costs one hit test per seed for a dialog label, two tree reads
+        for anything else.
+        """
+        dialog = [label for label in labels if label in DIALOG_LABELS]
+        if dialog:
+            found = self._probe_seeds(dialog)
+            if found is not None:
+                return found
+        for label in labels:
+            if label in DIALOG_LABELS:
+                continue
+            found = self._find_in_tree(label)
+            if found is not None:
+                return found
+        return None
+
+    def press(self, *labels: str) -> str:
+        """Find one of `labels` and tap it. Returns the label pressed.
+
+        Raises rather than reporting a tap that landed nowhere, and keeps a
+        screenshot: a runner dialog whose position is not in `SEEDS` looks
+        exactly like no dialog at all, and the screenshot is what turns it into
+        a new seed.
+        """
+        found = self.find_button(*labels)
+        if found is None:
+            self.screenshot(f"no-{_slug(labels[0])}.png")
+            raise SimulatorError(
+                f"none of {list(labels)} is on screen. The frontmost app showed {self._labels()}. "
+                f"If a dialog is up that SEEDS does not know about, the screenshot in artifacts says which."
+            )
+        return self._tap(found)
+
+    def prompt_up(self) -> bool:
+        """Is one of the runner's dialogs up? Seeds only: one pass of hit tests, no tree read."""
+        return self._probe_seeds(["Always Allow", "Allow", "Done", "Cancel", DONT_ALLOW]) is not None
+
+    def _probe_seeds(self, labels: list[str]) -> idb.Element | None:
+        w, h = self.screen_size()
+        for label, fx, fy in SEEDS:
+            if label not in labels:
+                continue
+            seen = self.at(int(w * fx), int(h * fy))
+            if seen is not None and seen.label == label and seen.is_button:
+                return seen
+        return None
+
+    def _find_in_tree(self, label: str) -> idb.Element | None:
+        for e in self._tree(match=label):
+            if e.label == label and e.is_button:
+                confirmed = self._confirmed(e)
+                if confirmed is not None:
+                    return confirmed
+        return None
+
+    def _confirmed(self, e: idb.Element) -> idb.Element | None:
+        """`e` itself, once a hit test at its center agrees; None when something else is there.
+
+        It returns the element it was given rather than what the hit test
+        found, because the two can differ — a hit test names whatever is
+        topmost at the point, which may be an inner element with a frame of
+        its own — and what a tap needs is the point that was just proven, not
+        a fresh center derived from a different rectangle.
+        """
+        seen = self.at(*e.frame.center())
+        if seen is not None and seen.label == e.label and seen.is_button:
+            return e
+        return None
+
+    def _tap(self, e: idb.Element, *, settle: float = 1.2, tries: int = 4) -> str:
+        """Tap an element a hit test has already named, once it has stopped moving.
+
+        A consent sheet slides up, and a tap that lands mid-slide hits whatever
+        is at that spot in that frame — *Allow Once* where *Always Allow* is
+        about to be. Two readings of the *same point*, a beat apart, that agree
+        on the label and on the frame mean it has settled. The point never
+        moves between readings: a sliding sheet is what changes under it, which
+        is the thing being waited out. The consumer used to do this for itself,
+        comparing two screenshots' blue rectangles; it belongs here.
+        """
+        label = e.label or ""
+        x, y = e.frame.center()
+        previous = self.at(x, y)
+        for _ in range(tries):
+            time.sleep(0.6)
+            seen = self.at(x, y)
+            if seen is None or seen.label != label:
+                break
+            if previous is not None and seen.frame == previous.frame:
+                self._idb(*idb.tap_args(self.udid, x, y))
+                time.sleep(settle)
+                return label
+            previous = seen
+        self.screenshot(f"moved-{_slug(label)}.png")
+        raise SimulatorError(f"{label!r} moved or vanished before it could be tapped")
 
     # -- window geometry ------------------------------------------------
     @staticmethod
