@@ -35,7 +35,7 @@ import numpy as np
 import Quartz as _Quartz
 from PIL import Image
 
-from shortcut_forge_lib.sim import ax
+from shortcut_forge_lib.sim import ax, idb
 
 # pyobjc populates the Quartz namespace lazily and ships no stubs, so every
 # attribute on it is unresolved to a type checker. One cast here instead of an
@@ -95,6 +95,9 @@ BUTTON_H_RANGE = (70, 220)  # excludes the tall shortcut tile on
 
 
 DARK_SUM = 150  # r+g+b below this is bezel, or a dark background
+
+IDB = "idb"
+"""Found on PATH, like the validator and the signer. `brew trust facebook/fb && brew install facebook/fb/idb`."""
 
 
 class SimulatorError(RuntimeError):
@@ -641,6 +644,7 @@ class Simulator:
         if self.artifacts:
             self.artifacts.mkdir(parents=True, exist_ok=True)
         self._shot = 0
+        self._screen: tuple[int, int] | None = None
 
     # -- discovery ------------------------------------------------------
     @classmethod
@@ -734,6 +738,110 @@ class Simulator:
                 return
             time.sleep(1.5)
         raise SimulatorError(f"the device pasteboard reads {got!r} after copying {text!r}; is the shell sandboxed?")
+
+    # -- idb ------------------------------------------------------------
+    def _idb(self, *args: str, timeout: float = 60) -> str:
+        """Run one idb command and return its stdout, or raise `SimulatorError`.
+
+        Two of idb's failures are not failures:
+
+        * **"No translation object returned"** is an empty hit test — and a
+          fresh companion's first read, about four seconds after it spawns,
+          prints the same thing. Both mean "nothing to report", so both come
+          back as an empty string and parse as nothing on screen.
+        * **"Failed to connect to companion"** means the registry in
+          `/tmp/idb/state` outlived the process it names. Dropping that one
+          registration lets the next command spawn a fresh companion. Never
+          `idb kill`, which SIGKILLs every companion on the Mac — other UDIDs'
+          and other sessions'.
+        """
+        r = _run(IDB, *args, check=False, timeout=timeout)
+        if r.returncode == 0:
+            return r.stdout
+        out = (r.stdout or "") + (r.stderr or "")
+        if idb.NOTHING_THERE in out:
+            return ""
+        if "Failed to connect to companion" in out:
+            _run(IDB, *idb.disconnect_args(self.udid), check=False, timeout=30)
+            r = _run(IDB, *args, check=False, timeout=timeout)
+            if r.returncode == 0:
+                return r.stdout
+            out = (r.stdout or "") + (r.stderr or "")
+            if idb.NOTHING_THERE in out:
+                return ""
+        raise SimulatorError(f"idb {' '.join(args)} failed: {out.strip()[:400]}")
+
+    def drop_companion(self) -> None:
+        """Leave no companion running or registered for this device.
+
+        A companion reads `DEVELOPER_DIR` when it spawns and never again, and
+        the registry is keyed by UDID alone, so one spawned under a different
+        Xcode is silently reused. Dropping it is how an erase, and a switch of
+        Xcode, start from a known state.
+        """
+        # `-f` has no long form in BSD pkill; this is the documented exception
+        # to the long-flag rule, not an oversight.
+        _run("pkill", "-f", f"idb_companion --udid {self.udid}", check=False)
+        _run(IDB, *idb.disconnect_args(self.udid), check=False)
+
+    # -- reading the screen ---------------------------------------------
+    def elements(self, backend: str = idb.AX, *, match: str | None = None) -> list[idb.Element]:
+        """The frontmost application's elements. Never another process's.
+
+        Every tree query in idb walks the frontmost application and stops, so
+        while the Shortcuts *runner* has a dialog up — Ask for Input, a consent,
+        the output-permission sheet, all drawn by `com.apple.ShortcutsUI` — this
+        returns the screen underneath it, which has buttons of its own. `at()`
+        is the only thing that sees those dialogs.
+        """
+        return idb.parse_elements(self._idb(*idb.describe_all_args(self.udid, backend=backend, match=match)))
+
+    def _tree(self, *, match: str | None = None) -> list[idb.Element]:
+        """The frontmost tree, from whichever backend can see this screen.
+
+        The default backend is asked first: it is the one that sees a presented
+        sheet, and an `axbridge` failure costs about 4.5 s. One element means
+        the Application and nothing under it, which is what the default backend
+        returns for a screen it cannot see into.
+        """
+        found = self.elements(idb.AX, match=match)
+        if len(found) > 1:
+            return found
+        other = self.elements(idb.AXBRIDGE, match=match)
+        return other if len(other) > len(found) else found
+
+    def at(self, x: float, y: float) -> idb.Element | None:
+        """Whatever is under a point, in whichever process drew it. None when nothing is."""
+        return idb.parse_element(self._idb(*idb.describe_point_args(self.udid, x, y)))
+
+    def screen_size(self) -> tuple[int, int]:
+        """The device's size in points, read once per `Simulator`.
+
+        From the Application element rather than from a screenshot: it is
+        already in points, and it is still there when a sheet is up.
+        """
+        if self._screen is None:
+            app = self._application()
+            self._screen = (int(app.frame.width), int(app.frame.height))
+        return self._screen
+
+    def frontmost_pid(self) -> int:
+        """The pid of the app drawing the tree. A hit test that returns another pid is a runner dialog."""
+        return self._application().pid
+
+    def _application(self) -> idb.Element:
+        for backend in (idb.AX, idb.AXBRIDGE):
+            for e in self.elements(backend):
+                if e.type == "Application":
+                    return e
+        raise SimulatorError(
+            f"idb reported no Application element for {self.udid}. The device may still be booting, or a "
+            f"companion may be stuck — try `idb disconnect {self.udid}`."
+        )
+
+    def _labels(self) -> list[str]:
+        """What the frontmost app is showing, for an error message."""
+        return [e.label for e in self._tree() if e.label][:15]
 
     # -- window geometry ------------------------------------------------
     @staticmethod

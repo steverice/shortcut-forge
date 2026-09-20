@@ -6,7 +6,9 @@ must not either.
 
 from __future__ import annotations
 
+import os
 import plistlib
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -159,3 +161,125 @@ def test_set_pasteboard_refuses_a_value_that_never_lands(monkeypatch):
 
     with pytest.raises(harness.SimulatorError, match="sandboxed"):
         Simulator("UDID").set_pasteboard("123456", attempts=3)
+
+
+FIXTURES = Path(__file__).parent / "fixtures" / "idb"
+UDID = "F00DCAFE-0000-0000-0000-000000000000"
+
+FAKE_IDB = '''#!/usr/bin/env python3
+"""A fake idb that answers from a captured scene, by argv rather than by call order."""
+import os
+import pathlib
+import sys
+
+argv = sys.argv[1:]
+scene = pathlib.Path(os.environ["IDB_SCENE"])
+with pathlib.Path(os.environ["IDB_LOG"]).open("a") as log:
+    log.write(" ".join(argv) + "\\n")
+
+always = os.environ.get("IDB_ALWAYS_FAIL")
+if always:
+    sys.stderr.write(always)
+    sys.exit(2)
+
+once = os.environ.get("IDB_FAIL_ONCE")
+if once and not pathlib.Path(once).exists():
+    pathlib.Path(once).write_text("failed")
+    sys.stderr.write("Failed to connect to companion at /tmp/idb/x_companion.sock\\n")
+    sys.exit(1)
+
+def answer(path):
+    if path.exists():
+        sys.stdout.write(path.read_text())
+        sys.exit(0)
+    sys.stderr.write(
+        "No translation object returned for simulator. This means you have likely "
+        "specified a point onscreen that is invalid or invisible due to a fullscreen dialog"
+    )
+    sys.exit(1)
+
+if argv[:2] == ["ui", "describe-all"]:
+    backend = argv[argv.index("--api") + 1] if "--api" in argv else "ax"
+    answer(scene / f"all-{backend}.json")
+if argv[:2] == ["ui", "describe-point"]:
+    x, y = [a for a in argv[2:] if a.lstrip("-").isdigit()][:2]
+    answer(scene / f"point-{x}-{y}.json")
+sys.exit(0)
+'''
+
+
+@pytest.fixture
+def fake_idb(tmp_path, monkeypatch):
+    """An `idb` on PATH that replays one captured scene, and logs every argv it was given.
+
+    Answering by argv rather than by replay order is deliberate: the finder
+    tries seeds in a fixed order, and a test that depended on that order would
+    break every time a seed moved.
+    """
+    binary = tmp_path / "idb"
+    binary.write_text(FAKE_IDB)
+    binary.chmod(0o755)
+    log = tmp_path / "calls.log"
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+    monkeypatch.setenv("IDB_LOG", str(log))
+    monkeypatch.setattr(harness.time, "sleep", lambda *_: None)
+
+    def use(scene: str) -> Simulator:
+        monkeypatch.setenv("IDB_SCENE", str(FIXTURES / scene))
+        return Simulator(UDID)
+
+    use.log = lambda: log.read_text().splitlines() if log.exists() else []
+    use.fail_once = lambda: monkeypatch.setenv("IDB_FAIL_ONCE", str(tmp_path / "failed"))
+    return use
+
+
+def test_elements_parses_what_idb_printed(fake_idb):
+    sim = fake_idb("library")
+    found = sim.elements()
+    assert found
+    assert found[0].type == "Application"
+    assert "--api ax" in " ".join(fake_idb.log())
+
+
+def test_a_point_with_nothing_there_is_none_not_an_error(fake_idb):
+    sim = fake_idb("library")
+    assert sim.at(9999, 9999) is None
+
+
+def test_a_dead_companion_is_disconnected_once_then_retried(fake_idb):
+    sim = fake_idb("library")
+    fake_idb.fail_once()
+    assert sim.elements(), "the retry after a disconnect should have succeeded"
+    calls = fake_idb.log()
+    assert calls[1] == f"disconnect {UDID}", f"expected a disconnect between the two reads, saw {calls}"
+    assert len(calls) == 3
+
+
+def test_an_unrecognized_failure_raises_with_what_idb_said(fake_idb, monkeypatch):
+    sim = fake_idb("library")
+    monkeypatch.setenv("IDB_ALWAYS_FAIL", "boom: the companion exited")
+    with pytest.raises(harness.SimulatorError, match="boom: the companion exited"):
+        sim.elements()
+
+
+def test_a_companion_that_never_comes_back_raises_after_one_disconnect(fake_idb, monkeypatch):
+    """The recovery is tried once. A loop here would hide a companion that cannot start."""
+    sim = fake_idb("library")
+    monkeypatch.setenv("IDB_ALWAYS_FAIL", "Failed to connect to companion at /tmp/idb/x_companion.sock")
+    with pytest.raises(harness.SimulatorError, match="Failed to connect"):
+        sim.elements()
+    assert fake_idb.log().count(f"disconnect {UDID}") == 1
+
+
+def test_screen_size_is_the_application_frame_and_is_read_once(fake_idb):
+    sim = fake_idb("library")
+    w, h = sim.screen_size()
+    assert (w, h) == sim.screen_size()
+    assert w > 100
+    assert h > w
+    assert len([c for c in fake_idb.log() if c.startswith("ui describe-all")]) == 1
+
+
+def test_frontmost_pid_is_the_applications(fake_idb):
+    sim = fake_idb("library")
+    assert sim.frontmost_pid() == sim.elements()[0].pid
