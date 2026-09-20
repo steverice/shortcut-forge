@@ -117,8 +117,42 @@ def test_center_is_the_middle_of_the_frame():
     assert idb.Frame(23, 252, 172, 54).center() == (109, 279)
 
 
-def test_a_cell_carrying_a_button_trait_counts_as_a_button():
-    """axbridge reports a library tile that way."""
-    cell = idb.Element(1, "Cell", "Attendance", None, idb.Frame(0, 0, 10, 10), ("Button", "Scrollable"))
-    assert cell.is_button
-    assert not idb.Element(1, "Key", "Done", None, idb.Frame(0, 0, 10, 10), ()).is_button
+def test_is_button_is_the_type_because_the_trait_does_not_track_it():
+    """Measured across every capture: 183 elements are buttons carrying no `Button` trait.
+
+    The axbridge tree's Play buttons are the bulk of them, and no element
+    anywhere carries the trait without also being typed a button — so the type
+    is the signal and the trait would only lose buttons.
+    """
+    els = idb.parse_elements(capture("library", "all-axbridge.json"))
+    buttons = [e for e in els if e.is_button]
+    assert buttons
+    assert any("Button" not in e.traits for e in buttons), "a trait-based check would have missed these"
+    assert all(e.type == "Button" for e in buttons)
+    assert not idb.Element(1, "Cell", "Attendance", None, idb.Frame(0, 0, 10, 10), ("Button",)).is_button
+
+
+def test_the_keyboards_keys_are_told_apart_by_trait_not_by_label():
+    """A numeric keypad has no letters, and the prompt this harness answers is six digits.
+
+    The default backend types the keys as `Button`, exactly like a sheet's own
+    buttons, and marks them with a `KeyboardKey` trait; `axbridge` types them
+    `Key` and gives them no traits. Nothing outside a keyboard carries the
+    trait in any capture.
+    """
+    ax = idb.parse_elements(capture("setup-question-keyboard", "all-ax.json"))
+    keys = [e for e in ax if "KeyboardKey" in e.traits]
+    assert len(keys) == 33
+    assert {"delete", "Dictate", "Emoji"} <= {e.label for e in keys}, "not only letters"
+    assert all(e.type == "Button" for e in keys), "the same type as the sheet's own buttons"
+    assert "KeyboardKey" not in next(e for e in ax if e.label == "Close").traits
+
+
+def test_output_that_is_not_the_shape_we_expect_is_nothing_on_screen():
+    """Every level of it, not only the top: a parser that raises here crashes a run."""
+    assert idb.parse_elements('{"type": "Application"}') == []
+    assert idb.parse_element('{"type": "Button", "AXLabel": "Done"}') is None
+    assert idb.parse_element('{"type":"Button","frame":{"x":"n/a","y":0,"width":1,"height":1}}') is None
+    assert idb.parse_elements('[{"type":"Button"},{"type":"Button","frame":{"x":0,"y":0,"width":2,"height":2}}]') == [
+        idb.Element(0, "Button", None, None, idb.Frame(0, 0, 2, 2), ())
+    ]

@@ -58,6 +58,14 @@ class Frame:
     height: float
 
     def center(self) -> tuple[int, int]:
+        """The middle of the rectangle, truncated to whole points.
+
+        Truncated rather than rounded, which can place the point up to a point
+        above and left of the true middle. Frames are not always integral — a
+        toolbar button measured at x 167.667 — but every control this harness
+        taps is scores of points across, and `tap_args` truncates again, so the
+        difference never leaves the control.
+        """
         return int(self.x + self.width / 2), int(self.y + self.height / 2)
 
 
@@ -74,8 +82,20 @@ class Element:
 
     @property
     def is_button(self) -> bool:
-        """A button by type, or by trait — axbridge reports a library tile as a `Cell` carrying one."""
-        return self.type == "Button" or "Button" in self.traits
+        """A button by type. The `Button` trait does not track it and is not consulted.
+
+        Measured across every capture: 183 elements are typed `Button` while
+        carrying no `Button` trait — the whole of the `axbridge` tree's Play
+        buttons among them — and no element anywhere carries the trait without
+        also being typed a button. A trait-based check would therefore miss
+        most real buttons and catch nothing the type does not.
+
+        `traits` is parsed regardless, because it is what tells the software
+        keyboard's keys apart from a sheet's own buttons: on the default
+        backend both are typed `Button`, and only a `KeyboardKey` trait
+        separates them.
+        """
+        return self.type == "Button"
 
 
 def describe_all_args(
@@ -119,17 +139,26 @@ def _element(raw: Any) -> Element | None:
     if not isinstance(frame, dict):
         return None
     traits = raw.get("traits")
-    return Element(
-        pid=int(raw.get("pid") or 0),
-        type=str(raw.get("type") or ""),
-        label=raw.get("AXLabel"),
-        value=raw.get("AXValue"),
-        frame=Frame(
+    try:
+        pid = int(raw.get("pid") or 0)
+        rect = Frame(
             float(frame.get("x", 0)),
             float(frame.get("y", 0)),
             float(frame.get("width", 0)),
             float(frame.get("height", 0)),
-        ),
+        )
+    except (TypeError, ValueError):
+        # idb has never printed a non-numeric pid or coordinate, but "output we
+        # do not recognize" has to mean nothing on screen at every level, not
+        # only at the top: a parser that raises here would turn a shrug into a
+        # crash in the middle of a run.
+        return None
+    return Element(
+        pid=pid,
+        type=str(raw.get("type") or ""),
+        label=raw.get("AXLabel"),
+        value=raw.get("AXValue"),
+        frame=rect,
         traits=tuple(str(t) for t in traits) if isinstance(traits, list) else (),
     )
 
