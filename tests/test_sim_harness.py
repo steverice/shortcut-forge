@@ -399,6 +399,21 @@ def test_a_button_the_keyboard_hides_is_not_found(fake_idb):
     assert sim._keyboard_up(sim._tree())
 
 
+def test_a_tree_match_the_hit_test_disagrees_with_is_not_found(fake_idb, monkeypatch):
+    """The rule the whole finder rests on, exercised rather than reasoned about.
+
+    A runner dialog is drawn by another process, so the frontmost tree still
+    lists the screen underneath it — that screen's buttons included. Only a hit
+    test knows what is actually on top at a given point. Here the tree offers
+    *Add Shortcut* and every hit test answers with a dialog's *Allow*, which is
+    what a consent sheet over the setup page looks like from outside.
+    """
+    sim = fake_idb("setup-question")
+    covering = idb.Element(99, "Button", "Allow", None, idb.Frame(0, 700, 402, 60), ("Button",))
+    monkeypatch.setattr(Simulator, "at", lambda self, x, y: covering)
+    assert sim.find_button("Add Shortcut") is None
+
+
 def test_press_taps_the_point_the_hit_test_returned(fake_idb):
     sim = fake_idb("setup-question")
     assert sim.press("Add Shortcut") == "Add Shortcut"
