@@ -37,16 +37,27 @@ ANSWER = "424242"
 SETUP_NAME = "ZZ Fixture Setup"
 ASK_NAME = "ZZ Fixture Ask"
 
+#: The device writes this label with a typographic apostrophe, not the straight
+#: one a keyboard types. An exact-label comparison against `"Don't Allow"` never
+#: matches, and the button is then invisible to a scan that filters by label —
+#: measured 2026-09-19, when it was the one label a capture never saw.
+DONT_ALLOW = "Don\u2019t Allow"
+
 #: The labels a seed has to be able to find: the ones only the Shortcuts
 #: runner draws, in a process no tree query reaches. Not `OK` — a run error's
 #: alert belongs to the Shortcuts app itself and is in the frontmost tree.
-SEED_LABELS = ("Always Allow", "Allow", "Allow Once", "Don't Allow", "Done", "Cancel")
+SEED_LABELS = ("Always Allow", "Allow", "Allow Once", DONT_ALLOW, "Done", "Cancel")
 
 #: Typed into the setup question's field. The letters are deliberate: `Wi-Fi 123`
 #: arrived verbatim through `idb ui text`, but it starts with a capital and the
 #: answer field is documented to autocapitalize. What the field keeps settles
 #: that, in the one place the answer matters.
 SAMPLE = "zz424242"
+
+#: What idb prints when it has nothing to report — the empty-hit-test sentence,
+#: and the same sentence a companion prints for about four seconds after it
+#: spawns, before it has anything to say either.
+NOTHING_THERE = "No translation object returned"
 
 
 def sh(*args: str, check: bool = False, timeout: float = 180) -> str:
@@ -184,13 +195,29 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     seeds: dict[str, tuple[float, float]] = {}
 
-    # A companion's first read after it is dropped, which is the one sentence
-    # the runner has to treat as "nothing yet" rather than as a failure.
+    # What idb prints when it has nothing to report — the one sentence the
+    # runner has to treat as "nothing there" rather than as a failure. A fresh
+    # companion's first read prints it for about four seconds after it spawns,
+    # and an empty hit test prints the same sentence at any time, which is why
+    # one rule in `idb()` covers both. The companion race is not reliably
+    # reproducible — it can be ready before the read lands, and then this comes
+    # back as an ordinary tree — so take the sentence from a hit test far off
+    # screen when the race does not happen.
+    # `-f` has no long form in BSD pkill, so the long-flag rule does not apply.
     sh("pkill", "-f", f"idb_companion --udid {UDID}")
     sh("idb", "disconnect", UDID)
     time.sleep(1)
-    (OUT / "warmup.txt").write_text(idb("ui", "describe-all", "--api", "ax"))
-    print("warm-up line:", (OUT / "warmup.txt").read_text().strip()[:90])
+    first = idb("ui", "describe-all", "--api", "ax")
+    warmup_source = "the companion's first read after it was dropped"
+    if NOTHING_THERE not in first:
+        first = idb("ui", "describe-point", "9999", "9999")
+        warmup_source = (
+            "an empty hit test far off screen (the companion had already reconnected by the time the first read landed)"
+        )
+    if NOTHING_THERE not in first:
+        raise SystemExit(f"idb did not print the empty-hit-test sentence; it said {first[:200]!r}")
+    (OUT / "warmup.txt").write_text(first)
+    print("nothing-there line:", first.strip()[:110])
     for _ in range(30):  # the same poll `wait_booted` will do
         if len(tree()) > 1:
             break
@@ -253,16 +280,20 @@ def main() -> None:
     open_url("shortcuts://run-shortcut?name=" + urllib.parse.quote(ASK_NAME))
     time.sleep(6)
     ask = scan(w, h)
-    field_seed = None
+    field_seed, field_element = None, None
     for y in range(int(h * 0.05), int(h * 0.98), 8):
         e = at(w // 2, y)
         if e is not None and e.get("type") in ("TextField", "TextArea"):
-            field_seed = (w // 2, y)
+            field_seed, field_element = (w // 2, y), e
             break
     if field_seed is None:
         raise SystemExit("the Ask dialog never showed a text field; did the run start?")
-    fx, fy = field_seed
-    seeds["_field"] = (round(fx / w, 3), round(fy / h, 3))
+    # Through `seed_of` like every other seed, and for the same reason: the
+    # point captured has to be the one the rounded fraction derives back to,
+    # not the raw point the scan happened to stop on. The field carries no
+    # label, so it is matched on its type.
+    field_fraction, (fx, fy) = seed_of(field_element, w, h, match="type")
+    seeds["_field"] = field_fraction
     ask_points = {label: seed_of(e, w, h) for label, e in ask.items() if label in SEED_LABELS}
     capture("ask-dialog", [(fx, fy), *[point for _fraction, point in ask_points.values()]])
     for label, (fraction, _point) in ask_points.items():
@@ -296,7 +327,7 @@ def main() -> None:
             tap(allow, settle=3)
 
     _write_seeds(seeds, w, h)
-    _write_readme(w, h)
+    _write_readme(w, h, warmup_source)
     print(f"\nfixtures in {OUT}. Paste {OUT / 'seeds.txt'} into harness.py's SEEDS.")
 
 
@@ -305,22 +336,37 @@ def _center(e: dict) -> tuple[int, int]:
     return int(f["x"] + f["width"] / 2), int(f["y"] + f["height"] / 2)
 
 
-def seed_of(e: dict, w: int, h: int) -> tuple[tuple[float, float], tuple[int, int]]:
+def seed_of(e: dict, w: int, h: int, *, match: str = "AXLabel") -> tuple[tuple[float, float], tuple[int, int]]:
     """A seed's fraction, and the point that fraction derives back to.
 
     The point is derived from the *rounded* fraction, not from the element's
     center, because `harness.py` holds the rounded number and computes
     `int(w * fx)` from it. Naming the capture after the raw center would leave
-    the fixture a pixel away from the point the finder asks for.
+    the fixture a point away from the one the finder asks for, and a point with
+    no file is answered with the empty-hit-test sentence — a fixture set that
+    looks complete and silently reports nothing there.
+
+    Rounding moves the point by up to half a point, so the derived point is hit
+    tested before it is trusted. Every control measured so far is scores of
+    points tall; one that is not would fail here rather than in a test nobody
+    can explain. `match` is the attribute to compare — the Ask dialog's field
+    carries no label, so it is matched on `type`.
     """
     cx, cy = _center(e)
     fx, fy = round(cx / w, 3), round(cy / h, 3)
-    return (fx, fy), (int(w * fx), int(h * fy))
+    point = (int(w * fx), int(h * fy))
+    seen = at(*point)
+    if seen is None or seen.get(match) != e.get(match):
+        raise SystemExit(
+            f"the rounded seed for {e.get(match)!r} derives to {point}, where the hit test finds "
+            f"{(seen or {}).get(match)!r}. The control is too small for a three-place fraction."
+        )
+    return (fx, fy), point
 
 
 def _write_seeds(seeds: dict[str, tuple[float, float]], w: int, h: int) -> None:
     """Print the seed table as Python, Always Allow before Allow."""
-    order = ["Always Allow", "Allow", "Allow Once", "Don't Allow", "Done", "Cancel"]
+    order = ["Always Allow", "Allow", "Allow Once", DONT_ALLOW, "Done", "Cancel"]
     lines = ["SEEDS: tuple[tuple[str, float, float], ...] = ("]
     for label in order:
         if label in seeds:
@@ -339,7 +385,7 @@ def _write_seeds(seeds: dict[str, tuple[float, float]], w: int, h: int) -> None:
     print("\n" + "\n".join(lines))
 
 
-def _write_readme(w: int, h: int) -> None:
+def _write_readme(w: int, h: int, warmup_source: str) -> None:
     runtime = sh("xcrun", "simctl", "list", "devices", "--json")
     (OUT / "runtime.json").write_text(runtime)
     (OUT / "README.md").write_text(
@@ -352,9 +398,11 @@ Captured by `tests/capture_idb_fixtures.py` on {time.strftime("%Y-%m-%d")}, from
 One directory per screen. `all-ax.json` and `all-axbridge.json` are the two
 backends' `describe-all` output for it; each `point-<x>-<y>.json` is
 `describe-point <x> <y>` at that exact point, so a fake idb can answer by argv
-rather than by replay order. `warmup.txt` is what a companion prints on its
-first read after being dropped, which is the same sentence an empty hit test
-prints.
+rather than by replay order. `warmup.txt` is what idb prints when it has nothing
+to report: a fresh companion says it on its first read, and an empty hit test
+says it at any time. The two are the same sentence, which is why the harness
+treats both as "nothing on screen" with one rule. This capture's copy of
+`warmup.txt` came from {warmup_source}.
 
 Recapture on a new runtime by booting one device, leaving it idle, and running
 the script again with a different output directory. Nothing here boots a

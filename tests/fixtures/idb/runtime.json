@@ -35,7 +35,7 @@
     "com.apple.CoreSimulator.SimRuntime.iOS-27-0" : [
       {
         "dataPath" : "\/Users\/smrice\/Library\/Developer\/CoreSimulator\/Devices\/157363D5-38AF-48E0-B33B-F6BD8100B7BB\/data",
-        "dataPathSize" : 3232473088,
+        "dataPathSize" : 3238502400,
         "logPath" : "\/Users\/smrice\/Library\/Logs\/CoreSimulator\/157363D5-38AF-48E0-B33B-F6BD8100B7BB",
         "udid" : "157363D5-38AF-48E0-B33B-F6BD8100B7BB",
         "lastUsedAt" : "2026-09-19T08:29:02Z",
@@ -433,7 +433,7 @@
     "com.apple.CoreSimulator.SimRuntime.xrOS-27-0" : [
       {
         "dataPath" : "\/Users\/smrice\/Library\/Developer\/CoreSimulator\/Devices\/3BA81FB2-1A04-49EF-BF13-5B2598B8FBF9\/data",
-        "dataPathSize" : 1961132032,
+        "dataPathSize" : 1962393600,
         "logPath" : "\/Users\/smrice\/Library\/Logs\/CoreSimulator\/3BA81FB2-1A04-49EF-BF13-5B2598B8FBF9",
         "udid" : "3BA81FB2-1A04-49EF-BF13-5B2598B8FBF9",
         "lastUsedAt" : "2026-09-19T21:49:39Z",
