@@ -20,6 +20,13 @@ first.
 
 ## Simulator.app, or Device Hub
 
+> **This approach stopped working on 2026-09-17, and repairing it is the wrong
+> move.** Device Hub now exposes **no accessibility tree at all** — no windows,
+> no menu bar, under either process name, while frontmost, after a clean
+> relaunch with its preferences deleted. Everything below that reaches the screen
+> through System Events fails at the first call. See "Device Hub has no
+> accessibility tree, and idb is the way out" before spending time here.
+
 Xcode 27 deleted `Simulator.app` and replaced it with **Device Hub**
 (`Xcode.app/Contents/Applications/DeviceHub.app`, process `DeviceHub`), which
 shows simulators and real devices together in one window with a sidebar. The
@@ -93,6 +100,69 @@ the Desktop is one of macOS's privacy-protected folders, and the simulator
 process has no grant for it. The harness opens files from the repo and from temp
 paths for that reason. `~/Documents` and `~/Downloads` are protected the same
 way and are likely to fail too, though neither has been tried.
+
+### Device Hub has no accessibility tree, and idb is the way out
+
+Measured 2026-09-17. Device Hub is running, visible, not background-only, and
+frontmost, and System Events reports **zero windows and no menu bar** for it —
+under `DeviceHub` and under `Device Hub`, after quitting it, deleting
+`com.apple.dt.Devices` and relaunching, with a simulator booted. Accessibility
+itself is fine: the same query returns 24 windows for Finder and 1 for iTerm2.
+Someone else measured the same thing from a different codebase
+([XcodeBuildMCP #535](https://github.com/getsentry/XcodeBuildMCP/issues/535):
+"Device Hub exposes zero accessibility attributes. Finder, as a control, exposes
+20"), so this is the app, not this Mac.
+
+There is no fallback host. `Xcode.app/Contents/Developer/Applications` — where
+`Simulator.app` lived — does not exist in Xcode 27, nothing named Simulator.app
+is on disk, and LaunchServices has no registration for it, so `_detect_host()`
+has only one branch that can ever match.
+
+**What still works, which is most of what a harness needs.** The window server
+answers everything AX will not: `CGWindowListCopyWindowInfo` gives Device Hub's
+windows with owner, title and bounds, and a device window is titled with the
+device name alone — no `– iOS <version>` suffix, so `_title_is()` matching on
+name *and* version rejects it while name-only matching finds it. Screenshots
+(`simctl io … screenshot`) and every database assertion were always headless.
+Clicks are posted CGEvents and never needed AX; per XcodeBuildMCP, even Device
+Hub's menus respond to CoreGraphics clicks they will not expose to scripting.
+
+**Why patching it is still the wrong move.** Geometry from the window server
+gets a run as far as tapping, and then the old hazards remain: two Device Hub
+windows overlap, `screencapture -R` captures whatever is in front rather than
+the window you asked for, and there is no `AXRaise` to put the right one on top.
+A patched run reached the import sheet, measured the wrong window, and tapped
+into empty space while reporting no error — the silent-wrong-answer shape this
+document exists to catalog.
+
+**Use [idb](https://github.com/facebook/idb) instead.** It injects touches into
+the simulator rather than driving the mouse, so no window, no geometry, no
+occlusion, and no pointer takeover:
+
+```sh
+idb ui tap X Y          # device points, not screen points
+idb ui describe-all     # every on-screen element, with bounds and a11y info
+```
+
+That deletes rather than ports most of this file's hard-won machinery — the
+bezel measurement, the device-pixel-to-screen-point mapping, the blue-button
+pixel matching, the HiDPI click loss, the hovered-button dropout. Finding *Add
+Shortcut* becomes a lookup by label. Apple's own direction agrees: Xcode 27
+points automation at `devicectl` and `simctl` rather than at GUI scripting.
+
+Unverified before committing to it: idb states macOS 15+/Xcode 26+ and nobody
+here has run it on 27, it needs a companion daemon and a Python client, and its
+accessibility operations are simulator-only.
+
+**And idb does not replace the macOS guest.** The guest exists to *be a device* —
+a real identity with a working iCloud session and an isolated library — which is
+what minting a link requires. A simulator can sign into an Apple Account but
+[iCloud Drive and CloudKit do not reliably work there](https://developer.apple.com/forums/thread/712304),
+which is the same missing-device-identity wall that makes a macOS 27 guest
+useless (`docs/macos-guest.md`). idb drives a screen; it does not confer a
+CloudKit session. There is also no `shortcuts` CLI on iOS, so a simulator would
+mean driving the app's UI to run a publisher and scraping the result, where the
+guest answers over SSH.
 
 ## What had to be worked out
 

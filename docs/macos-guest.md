@@ -435,6 +435,60 @@ does nothing. Only a click on **Add Shortcut** imports it. At 1024×768 with one
 window, that button sat at about (544, 168) — but locate it by matching the
 framebuffer rather than hardcoding, because the sheet's contents vary.
 
+Measured end to end on 2026-09-17, with nobody at the guest: two signed files
+copied in over the SSH channel as base64 — 25 KB each, not worth mounting a
+share for — then `open`ed one at a time and committed by a located click at
+(543, 167), within a pixel of the figure above and found rather than assumed.
+`shortcuts list` confirmed each one landed.
+
+## Finding a button nobody can hardcode
+
+Two sheets have to be clicked to drive Shortcuts, and what works on one does not
+work on the other.
+
+**Add Shortcut is a filled blue button, and still needs care.** The sheet's icon
+tile is blue too and sits directly above it, so their rows merge into one band;
+a matcher that measures a candidate's height from that band gets 96px where the
+button is 27, and discards it. Take each box's vertical extent from its own
+columns.
+
+**The consent sheet has no default button at all.** Its three choices — Don't
+Allow, Allow Once, Always Allow — are identical flat controls, so the iOS rule
+that the affirmative is the bottom-most blue one finds *nothing* here. The
+affirmative is the right-most, and the row has to be found some other way.
+
+**Color cannot find it, because the sheet is translucent.** The same three
+buttons measured neutral 228-236 over the Shortcuts window and (214,202,206)
+over the desktop wallpaper. No fixed range covers both, and a local-average
+window wide enough to see past a button reaches past the sheet's edge and
+averages in the wallpaper. What survives both backdrops is structure: a *flat*
+horizontal run 80-240px wide sitting about 20 luminance levels below the surface
+on both sides. Both numbers are calibration, not taste — the three buttons
+measured 125px wide with 9px between them, and the step held at 20 across the
+two backdrops (232 on a 253 sheet, 207 on a 228 one) because a translucent
+button and the surface under it are tinted together. Re-measure both if the
+guest's resolution or appearance changes. Three further details, each of which
+cost a failed run:
+
+- **Sample the surface in a narrow window just outside each end**, and take the
+  brightest pixel in it. An edge is antialiased over several pixels, so a single
+  probe close in still reads the button and the step vanishes — but the buttons
+  are only 9px apart, so a probe reaching further than that reads the neighboring
+  button instead.
+- **A button's own label interrupts its rows.** Only the slices above and below
+  the text are flat all the way across, so a cluster has to bridge a text-height
+  gap or every button reads as two 7px fragments, neither tall enough to qualify.
+- **Park the pointer before capturing.** A hovered button renders differently
+  enough to drop out of the matcher, and losing one is worse than finding none:
+  with Always Allow hidden under the pointer, the right-most button found is
+  Allow Once, so the run is answered the wrong way with nothing reporting an
+  error. Measured — it happened once, and the only symptom was that a later run
+  raised a fresh prompt.
+
+**The blue matcher has a false positive worth knowing**: the selected row in the
+System Settings sidebar is a blue rounded rectangle the size of a default button.
+Anything that clicks the bottom-most blue thing will click it.
+
 ## `shortcuts run`, and consent
 
 It executes over SSH once a display and a GUI session exist. It does not fail —
@@ -448,8 +502,304 @@ answering **Always Allow** once during bake bakes them into the base. Do not let
 SSH time out while a prompt is pending: the invocation dies, and a later click
 lands on nothing while the next run raises a fresh prompt.
 
+**Killing Shortcuts is the cheap way back from a timed-out run.** The warning
+above is worth stating as a recovery procedure, because it was paid for twice:
+once SSH times out, the dialog on screen belongs to a dead invocation, and
+clicking its buttons does nothing at all — the framebuffer does not change and
+no error appears anywhere. `killall shortcuts Shortcuts ShortcutsViewService
+BackgroundShortcutRunner` clears it, after which a fresh run raises a fresh
+prompt that can be answered normally. Restarting the guest would clear it too;
+nobody here needed to, but a guest where the `killall` does not take is not
+stuck.
+
 `shortcuts run --output-path -` exists on macOS 27 and is the supported way to
 get a shortcut's result without the clipboard. Untested past the consent prompt.
+
+**Show Result blocks `shortcuts run` on every run, not only the first.**
+Measured 2026-09-18 in a throwaway clone with two signed probes that differed
+only in their last action: with every permission already granted, the Show
+Result probe was still waiting on its Cancel / Done sheet 30 seconds into its
+second run, while the probe ending in a notification returned in under a
+second, exit 0, clipboard set. A publisher meant to run headless therefore ends
+in a notification, not Show Result; the consumer that hit this made that swap
+on its side. Its message still reaches stdout either way.
+
+**Three consent prompts, each per shortcut on first use, each blocking the
+run until answered:**
+
+> Allow "<name>" to copy to the clipboard?  ·  Don't Allow / Allow
+>
+> Allow "<name>" to display notifications?  ·  Don't Allow / Allow
+>
+> Allow "<name>" to output 1 text item?  ·  Don't Allow / Allow Once / Always Allow
+
+The third comes from Show Result under the CLI. Because they are per shortcut,
+a **replaced publisher re-asks** everything the old one had been allowed, so the
+first mint after swapping the base's publisher answers the clipboard and
+notification prompts again, and presumably the iCloud-link consent; the
+clipboard and link ones only appear on a run that actually mints, so a dry run
+cannot prime them.
+
+**Two-button consent sheets need their own calibration.** The gray-button
+finder missed the two-button sheet twice: once it sat over a System Settings
+window, where Don't Allow is nearly invisible, and once over the Shortcuts
+window, where the blue-button finder matched the blurred strips of blue tiles
+under the sheet instead, a false positive. Both times the buttons were at
+x 411 and x 612, 190 px wide. The table below was measured on three-button
+sheets and does not cover this shape.
+
+**The `killall` above also quits the Shortcuts app**, which changes what the
+next sheet sits over: afterward the frontmost app was Finder with a restored
+System Settings window, which is the backdrop that hid Don't Allow. `open -a
+Shortcuts` after the `killall` restores a known backdrop.
+
+One loose end: a fresh publisher build is 99 actions, while the base's copy
+reads 100 in the gate, so the base holds a publisher from an older build or an
+older library revision. It minted three good links regardless, and nobody has
+looked at which action differs.
+
+## iCloud in a guest: it works on 26, and cannot work on 27
+
+Measured 2026-09-17. **Minting works end to end on a macOS 26.6.2 guest.** The
+same rig on macOS 27.0 cannot register for Apple Push, so it cannot hold a usable
+iCloud session, so it cannot mint a link — and every symptom of that points
+somewhere other than the cause, which is why it took a day to reach.
+
+**The end-to-end result, on 26.6.2.** The publishing Apple Account signed in;
+`brctl status` reported 24 containers syncing with `has-synced-down` and
+timestamps a minute old; the three real release builds imported; and the real
+publisher, run over SSH, minted three live links:
+
+```
+$ shortcuts run "<publisher>"                   # exit 0
+<the publisher's own done message, on stdout>
+
+$ pbpaste
+<li><a href="https://www.icloud.com/shortcuts/…">First</a></li>
+<li><a href="https://www.icloud.com/shortcuts/…">Second</a></li>
+<li><a href="https://www.icloud.com/shortcuts/…">Third</a></li>
+```
+
+Three things fall out of that transcript, each of which had been an open
+question. **`pbpaste` over SSH does reach the guest's pasteboard.** **`shortcuts
+run` exits 0 and prints the Show Result text on stdout**, so a shortcut's own
+message is readable without the clipboard at all. And the consent sheet needed
+answering by hand only because this guest had no Screen Sharing; the blessing
+would have let the framebuffer matcher do it.
+
+**A shortcut built for macOS 27 survives a 26 library.** This is the risk that
+argued for pinning the guest to 27 at all: a consumer whose shortcuts use
+27-only actions — Store Content and the live `Scan Code` — would be importing
+them into an older library, and an action silently dropped on import is the
+corruption class this document exists to catalog. Measured by importing three
+real signed builds and diffing the guest's own library database against the XML
+they were built from, the same comparison `sim.links.check_link` makes on a
+simulator:
+
+| built | actions installed | import questions installed |
+|---|---|---|
+| 317 actions, 3 questions, uses 27-only actions | 317, in order | 3 |
+| 17 actions, 0 questions | 17, in order | 0 |
+| 17 actions, 0 questions | 17, in order | 0 |
+
+Every identifier in the same order, and the questions intact. These imports were
+committed by a human click; whether a *synthesized* click preserves questions is
+still open question 8.
+
+**The root cause: the guest cannot mint its device identity key.** `apsd` asks
+the Secure Enclave for the key that device activation needs, and the virtual SEP
+refuses:
+
+```
+<sepk:* kid=0000000000000000>: unable to generate key: error e00002e2(-536870174)
+SecKeyCreateRandomKey_ios failed: -25308 errSecInteractionNotAllowed
+  "Interaction is not allowed with the Security Server."
+(DeviceIdentity) "Failed to create reference key."
+(DeviceIdentity) "Failed to copy AVP guest identity data" -> EINVAL
+APSBAAClientIdentityProvider failed to obtain a BAA cert
+```
+
+No key means no activation, no activation means no push token, and no push token
+means no trusted-device approval can be delivered and `cloudd` can never finish
+acquiring an account. The failures start at the bake's own first boot, in a guest
+that has never been asked to authenticate to anything.
+
+**Count the successes, not the errors.** Across this guest's entire log store
+since its bake — 4,400,623 lines:
+
+| line | count |
+|---|---|
+| `attempting to fetch BAA certs` | 68 |
+| `SecKeyCreateRandomKey_ios failed` | 69 |
+| `failed to obtain a BAA cert` | 68 |
+| `obtained BAA certs` | **0** |
+| `signed nonce data with host VM identity` | **0** |
+
+It tries every time and never once succeeds. A count of error lines would only
+say the errors are frequent; the zero says the guest never reaches the line a
+working guest logs. Note the denominator too — 68 attempts across a day is not a
+busy loop, so a five-minute window on an idle guest shows zero of everything and
+looks like the fault is absent.
+
+**It is macOS 27, measured on this host.** A macOS 26.6.2 guest (build 25G83),
+created from an IPSW by the same `tart create` on the same Mac, registers on its
+first attempt:
+
+| guest | `attempting to fetch BAA certs` | `obtained BAA certs` |
+|---|---|---|
+| macOS 27.0, this project's bake | 68 | **0** |
+| macOS 27.0, another rig's bake | 106 | **0** |
+| macOS 26.6.2 | 2 | **2** |
+| macOS 27.2 beta 1 (`26B5086k`), retested 2026-09-18 | 20 | **0** |
+
+**The attempt count is not a neutral denominator — it is a symptom.** A guest
+that registers attempts twice and stops. A guest that cannot retries: 68 across a
+day here, 106 on the other rig. So a healthy reading is *small and equal*, and a
+large attempt count is itself the fault rather than a reassuring sample size.
+Keep counting attempts, because a zero on a guest that has never tried still
+means nothing — but read a big number as bad news, not as confidence.
+
+A second macOS 27 guest on this host, built by a different implementation with a
+different provisioning path and first-boot sequence, reproduces the failure
+exactly: 106 attempts, 106 failures, 0 successes, both zeros exact. Independently, a Mac admin hit the same
+thing from the MDM side and published the comparison
+([Der Flounder, 2026-09-15](https://derflounder.wordpress.com/2026/09/15/enrolling-macos-golden-gate-27-0-0-virtual-machines-with-mdm-servers-does-not-work-correctly/)):
+macOS 27.0 and 26.6.2 log the *same first eight lines* and diverge at exactly one
+step, the mint. 26.6.2 logs `APSBAAClientIdentityProvider obtained BAA certs!`
+and `signed nonce data with host VM identity!`; 27.0 logs `unable to generate
+key`. His conclusion is that macOS 27.0.0 "erroneously assumes itself to be
+running on a Mac equipped with a Secure Enclave." No Apple bug number and no
+workaround exist as of 2026-09-17.
+
+Two explanations were killed rather than argued away. It is **not the clone** —
+the base fails identically, from its own first boot. And it is **not the launch
+context**: tart's FAQ names these exact errors as the symptom of
+Virtualization.framework lacking an unlocked `login.keychain`, and every VM here
+had been launched from a sandboxed agent shell, so one was started by hand from a
+Terminal in a GUI session with the keychain verified unlocked and `no-timeout`.
+Identical failure. That was the leading theory and it was wrong.
+
+**27.2 beta 1 does not fix it.** Measured 2026-09-18 on a guest baked from
+the `26B5086k` IPSW, in the first 100 seconds after its restart: 20 attempts,
+20 failures, 0 obtained, and nothing on port 5223, with the same
+`Failed to create reference key` / `unable to generate key` error underneath.
+The bake itself got as far as its final proof on that beta and stopped there:
+a beta guest shows the pre-release license sheet at first login, so the desktop
+is covered and the Dock probe click starts whatever is under the sheet rather
+than Safari. The guest is provisioned, blessed and reachable over SSH by then,
+which is all the retest needs, so a proof failure on a beta does not block it.
+
+**Retesting when a 27.x lands is two minutes and needs no human.** Boot a guest,
+give it a minute, and count — the denominator first, because a zero means
+nothing until you know the guest has tried:
+
+```sh
+# 1. Did it attempt at all? Zero means it has not spoken yet, so wait.
+log show --last 30m --predicate 'process == "apsd"' --style compact \
+  | grep -c 'attempting to fetch BAA certs'
+
+# 2. Did any attempt succeed? Fixed looks like a small number equal to (1).
+log show --last 30m --predicate 'process == "apsd"' --style compact \
+  | grep -c 'obtained BAA certs'
+
+# 3. A registered guest also holds a connection here.
+netstat -an | grep 5223
+```
+
+A fixed guest reads 2 and 2. A broken one reads a large number and 0.
+
+Run this on a guest that has just booted: `apsd` retries hard at startup — 8
+attempts inside the first 40 seconds — and then backs off to about 68 across a
+day, so a window on a guest that has been idle for hours can show zero of
+everything and look like the fault is absent. Both `grep -c 0` and the empty
+`netstat` exit **1**, which is the expected result on a broken guest; a wrapper
+using `set -e` will read the correct answer as a command failure. Verified
+against a known-bad guest on 2026-09-17, which is how the denominator step and
+this paragraph came to exist.
+
+**The action itself works**, which is worth keeping separate from the above.
+`shortcuts run` on the publisher raised Shortcuts' own sheet — *Allow "Link
+Probe" to create iCloud link?* — took a synthesized Always Allow, and ran on.
+Nothing about being in a VM stops the action, the consent, or the click.
+
+### The account-shaped symptoms, which are not the cause
+
+Two accounts failed two different ways before the push finding explained both.
+They are recorded because anyone debugging this without knowing about the SEP bug
+will meet them first, and each is convincing on its own terms.
+
+**`ICLOUD_UNSUPPORTED_DEVICE` reads like a verdict on the account. It is a
+verdict on the device.** The dedicated publishing account, whose only second
+factor was SMS to a phone number, took its password and its code on a 27 guest
+and then failed with that bare string — which looks exactly like Apple refusing
+an account that has never lived on Apple hardware. The same account later signed
+in **without trouble on the 26.6.2 guest**, where an SMS code was accepted just
+as readily. Nothing about the account's eligibility was the problem; the 27
+guest's broken device identity was.
+
+Signing that account into a real iPhone did not fix the 27 guest either — it made
+it fail *earlier*, at the SRP handshake with `AKAuthenticationServerError
+-3000076` and no code sent anywhere. That reversal is the push bug showing
+through: with no trusted device, Apple used the SMS path and the flow reached a
+code; once a trusted device existed, Apple preferred a push approval the guest
+can never receive.
+
+**An account with Advanced Data Protection signs in and never becomes usable.**
+System Settings showed it signed in, with a standing banner:
+
+> Some iCloud Data Isn't Syncing. Your end-to-end encrypted data stored in
+> iCloud can't be accessed on this device. Verify your account information to
+> resume syncing.
+
+Resume Data Sync spins for a minute and closes with nothing changed, which is
+that prohibition surfacing unlabeled — a guest carries a second standing banner
+saying it "can't be used to edit certain account information, sign in to Apple
+services, access Find My and Apple Pay", and approving a new device for
+end-to-end encrypted data is exactly that. With ADP on, every iCloud category is
+end-to-end encrypted, so the data session never becomes ready and everything
+built on CloudKit fails. ADP is a genuine second wall — an operator with it
+enabled could not mint from a guest even on a macOS where push works — but it is
+not what stopped us, and a non-ADP account would have hit the push bug instead.
+
+**The settings pane is not evidence.** It displayed iCloud Drive **on, 128.3 GB
+used**, on a guest that had:
+
+```
+$ ls -d ~/Library/Mobile\ Documents        # no such directory
+$ ls ~/Library/Preferences/MobileMeAccounts.plist   # no such file
+$ brctl status
+brctl: self-check failed; error: Error Domain=BRCloudDocsErrorDomain Code=141 "Access denied"
+```
+
+and, in the log, `cloudd` looping on `CloudCoreInternal.SessionReadinessError
+Code=3` for a blocking account-acquisition event while `akd` re-ran
+`VMHostBAASigning` every 1.6 seconds. **Ask `brctl`, not the pane.** The pane
+reports what the account is entitled to, not what this device has.
+
+**And the error the shortcut prints is misleading.** With the account signed in
+and both iCloud Drive and Shortcuts sync on, the action still failed with:
+
+> Error: In order to do this, you must be signed into iCloud.
+
+It is signed in. What it lacks is a *ready* session. Anything debugging this
+from the shortcut's message alone will go looking in the wrong place.
+
+**What this forces on a design.** Mint on **macOS 26** until Apple fixes 27.
+Minting from a 27 guest is not possible today, by anyone, with any account, and
+the one cost of dropping to 26 that cannot be worked around is provisioning:
+`VZMacGuestProvisioningOptions` needs 27 on **both** sides, so a 26 base boots
+into Setup Assistant and needs a human once per base. Everything else survives —
+the imports are lossless, the account signs in, the session becomes ready, and
+the links mint. The other cost that was feared, 27-only actions landing in a 26
+library, was measured and does not materialize.
+
+One account requirement does still hold, because it is a second wall rather than
+a symptom: **the minting account must not have Advanced Data Protection
+enabled.** With ADP every iCloud category is end-to-end encrypted and a new
+device needs approving from an existing one, which a guest is forbidden to do, so
+its data session never becomes ready no matter which macOS the guest runs. An
+operator with ADP on cannot mint from a guest at all, which is the strongest
+argument for a dedicated publishing account.
 
 ## The database is WAL
 
@@ -475,18 +825,240 @@ device. Whether a clone keeps a signed-in Apple session is **untested**.
 Base and clone must never run at once (identical machine identifiers), and
 Virtualization allows **two** concurrent macOS guests per host.
 
+**A clone keeps its base's signed-in Apple Account session.** Measured 2026-09-17
+on macOS 26.6.2: a base with an account signed in was stopped and cloned, and the
+clone — after a restart of its own — reported `brctl status` with 24 containers
+syncing, the same library, and no re-challenge of any kind. This is the finding
+the bake-once/clone-per-release shape depends on. It says nothing about macOS 27,
+where no session can be established to clone in the first place.
+
+**A hand-provisioned base does not auto-login, and its clones fail confusingly.**
+A 27 guest gets auto-login from `VZMacGuestProvisioningOptions`'s
+`logsInAutomatically`. A macOS 26 base has no provisioning — that flag needs 27
+on both sides — so unless someone sets it, every clone boots to a **login
+window**: `stat -f '%Su' /dev/console` reads `root`, `who` is empty, `bird` never
+starts so there is no iCloud session, and the `shortcuts` CLI fails with
+
+> Error: Couldn't communicate with a helper application.
+
+which is the same message this document attributes to `--no-graphics` removing
+the display. A reader who meets it on a clone will chase a display that is
+working fine.
+
+`sysadminctl -autologin set -userName <u> -password <p>` sets the user and then
+fails to store the password — `SACSetAutoLoginPassword error:22`, no
+`/etc/kcpassword` written — so auto-login still stops at the window. Writing that
+file directly works: it is the password XORed against the fixed key
+`7D 89 52 23 D2 BC DD EA A3 B9 1F`, zero-padded to a multiple of 12 (padding even
+when the length already divides), installed `root:wheel` mode 600. After a
+restart the console owner reads the account name and everything GUI-dependent
+works. Set it on the **base**, once, so every clone inherits it.
+
+**Whether a clone inherits its base's identity is unmeasured, and the obvious
+evidence for it is worthless.** A clone's `akd` logs an attestation chain:
+
+```
+Basic Attestation VM Sub CA1 <- Basic Attestation VM Root CA - G1
+  Not Valid Before: Tue Sep 15 22:32:26 2026
+  Not Valid After:  Thu Sep 16 22:32:26 2027
+```
+
+A `notBefore` 24 hours before the base's bake minute looks like proof the clone
+is presenting the base's certificate. It is not. **Every guest's certificate is
+backdated 24 hours from its own issuance**, measured on a second guest that was
+created from an IPSW and never cloned: its chain reads `notBefore` Sep 16
+02:36:55 against a creation at about Sep 17 02:30, a backdate from an issuance
+inside its own first boot. A clone made shortly after its base therefore has a
+freshly issued certificate dated within minutes of that bake, which is
+indistinguishable from an inherited one by timestamp alone.
+
+This claim was written three times before it was right — as measured, then as
+measured-but-narrow, then as a cache of unknown provenance — and each version
+survived review. What settled it was not closer reading of the same artifact but
+a different artifact: a guest with no clone. If a claim about lineage rests on a
+timestamp, get the control.
+
+To read the chain in any guest:
+
+```sh
+log show --last 10m --predicate 'process == "akd"' --style compact \
+  | grep -A4 'Returning cached certificates'
+```
+
+**What Apple says, which is documentation rather than measurement.** *Using
+iCloud with macOS Virtual Machines* says the framework detects a second copy
+started **while another is already running** and builds a new identity for that
+one, which then needs a human to reauthenticate before iCloud works. Serialized
+copies are not covered by that sentence either way. Design as though a
+concurrent start costs a reauthentication — it is free to honor and expensive to
+discover — but do not claim the serialized case is proven, because nothing here
+proves it.
+
 ## Two hazards worth designing around
 
 **The base is a credential at rest.** Once it holds a signed-in Apple session it
 is an unencrypted image with auto-login enabled, and every clone inherits it.
-Observed rather than theorized: a local Time Machine snapshot was taken mid-session
-at 12:20 and captured the VM. Snapshots also pin deleted blocks, so reclaiming
-disk can appear to *reduce* free space until they are thinned. Exclude `~/.tart`
-from Time Machine.
+Observed rather than theorized: a local Time Machine snapshot was taken
+mid-session at 12:20 and captured the VM.
+
+**A Time Machine exclusion does not keep a guest out of a snapshot, and an
+earlier version of this document said it did.** Exclusions govern only what is
+copied *from* a snapshot to the backup destination. An APFS snapshot is a
+whole-volume, immutable, point-in-time reference; no path can be omitted from
+one, and nothing can be pruned out of one afterwards. The only granularity is
+deleting an entire snapshot.
+
+Measured 2026-09-17, with `~/.tart/vms` and `~/.tart/cache` both reporting
+`[Excluded]` to `tmutil isexcluded`: deleting two 32 GB guests returned **no**
+disk at all, because four local snapshots still referenced their blocks. Free
+space kept falling afterwards as new snapshots were taken. A `tart delete` on a
+snapshotted volume frees nothing until the snapshots holding those blocks go.
+
+**The fix is a separate APFS volume**, not an exclusion. Snapshots are per
+volume, so a guest on its own volume is never captured by a snapshot of the data
+volume, and `tart delete` returns its space at once. A new volume in the same
+container costs nothing and shares the container's free space, and `tart.home()`
+honors `TART_HOME`, so pointing it there is a one-line change. To unstick a
+volume that is already full, `tmutil thinlocalsnapshots / <bytes> 4` drops
+snapshots until the target is met — which costs every local restore point it
+deletes, and no Time Machine backups on the destination.
 
 **Disk.** The IPSW is about 25 GB cached, a restored base about 32 GB, and a
 restore needs roughly 60 GB free to be comfortable. `tart create --from-ipsw latest`
-downloads and caches it, so `ipsw` is not a required tool.
+downloads and caches it, so `ipsw` is not a required tool. Check free space
+immediately before a restore rather than during one: on a volume near capacity,
+running out mid-restore costs both the download and the guest.
+
+## Preparing a 26 base by hand
+
+Measured 2026-09-18 while getting a hand-provisioned macOS 26.6.2 base ready to
+clone for a release. Nobody touched the screen at any point; every step ran
+over SSH or VNC from the host, and every claim below was read back rather than
+assumed. Eight things, in the order they were hit.
+
+**A hand-provisioned base has no Screen Sharing and no blessing.** Nothing
+listened on 5900, `launchctl print system/com.apple.screensharing` said "Could
+not find service", and the system TCC store had no screen-sharing rows. `bake()`
+cannot run on 26 (provisioning needs 27 on both sides), so a 26 base gets
+`bake.sharing_script` and the TCC write applied by hand, and the 09-17 consent
+was answered by a person for exactly this reason.
+
+**`bless.tcc_rows()` cannot be written as-is on macOS 26.** The insert fails
+with "table access has no column named one_time_reprompt_eligible". 26's
+`access` table has `service, client, client_type, auth_value, auth_reason,
+auth_version, csreq, policy_id, indirect_object_identifier_type,
+indirect_object_identifier, indirect_object_code_identity, flags,
+last_modified, pid, pid_version, boot_uuid, last_reminded` — neither
+`one_time_reprompt_eligible` nor `reminder_count`. The failed `executemany`
+rolled back and wrote nothing. Writing the two rows with only the columns
+present, and refusing to drop any column whose value is non-zero, gave both
+rows `auth_value` 2; after a reboot the screen rendered (41,058 distinct colors)
+and clicks landed. The fix for `bless` is to build the insert from
+`PRAGMA table_info(access)` with that same refusal rule.
+
+**`write_blessing()`'s scale step would also fail on this guest**, after the TCC
+rows were committed: `:DisplayAnyUserSets:Configs:0:DisplayConfig:0:CurrentInfo:Scale`
+does not exist in its displays plist, so `PlistBuddy Set` errors, which is the
+half-applied state that function's docstring warns about. This guest already
+runs at 1024x768 with `backingScaleFactor` 1 and does not need the step. Skip
+the scale when the key is absent, and check `backingScaleFactor` over SSH
+afterward instead.
+
+**Auto-login via `/etc/kcpassword` works on the base.** The password XORed with
+the bytes `7D 89 52 23 D2 BC DD EA A3 B9 1F`, zero-padded to the next multiple
+of 12 (a 6-character password gives 12 bytes), written `root:wheel` `0600`, plus
+`defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser
+<user>`. After a clean in-guest shutdown and boot, `/dev/console` is owned by
+that user.
+
+**Boot with `CI=true tart run <name> --vnc`, not `--no-graphics`.** The flag
+section above already says why: `--no-graphics` removes the display, and a
+guest without one reports the same "Couldn't communicate with a helper
+application" from `shortcuts` as a guest nobody has logged into. A base booted
+that way to read its library looked, from SSH, exactly like the auto-login
+problem.
+
+**Three VNC input quirks on this guest, each measured:**
+
+- After about 30 seconds of no VNC activity, **the first click is dropped.**
+  Alternating sidebar clicks landed 5 of 6, the miss being the first. A 1-second
+  warm-up move did not fix it (3 of 4, again the first). Warm-up moves with a
+  3.5-second pause did, 2 of 2 after 75 seconds idle. What earlier looked like
+  "menus do not work" was mostly this.
+- **Clicking a context-menu item does nothing**, even when the hover has
+  visibly highlighted it. Hover the item and press Return.
+- Deleting a shortcut takes a click on the red Delete button of a confirmation
+  that names the shortcut ("Delete shortcut “<name>”?"); assert on the
+  name before confirming. The grid reflows after each delete, so every target
+  in turn sat at the same spot.
+
+**Shortcuts iCloud Sync was on in the base, and it has to be off.** The delete
+sheet said the shortcut would be deleted from every iCloud device, and Settings
+showed the toggle on. With sync on, a clone's imports sync back into the base on
+its next boot, which breaks the rule that a base holds only the publisher. It was
+turned off in the base (Settings > General > iCloud Sync). Whether a guest mints
+with sync off is what the v1.5.0 run measures; the operator's Mac minted two
+earlier releases with it off.
+
+## Minting from a clone, end to end
+
+Measured 2026-09-18, the same day as the base preparation above, on a clone of
+that base. Nobody touched the screen. Three live links came back, every one
+passed a device-free comparison against the build it was minted from, and the
+clone was shut down from inside and deleted. Nine things, in the order they
+were hit.
+
+**A clone of the prepared base reaches the desktop by itself.** The console
+owner was the account about 30 seconds after SSH answered, `WFCloudKitSyncEnabled`
+read 0 in the clone, `brctl status` showed 24 containers, and `tart`'s machine
+id was identical for base and clone.
+
+**Setup questions survive a synthesized import on macOS 26.6.2.** The largest
+target (339 actions, 3 questions) was imported by VNC clicks and landed with 3
+of 3 questions, all unanswered, read from the database; the link minted from it
+carries all 3 with matching `ActionIndex`, `ParameterKey` and `Category`. Open
+question 8 below is answered.
+
+**The import flow, measured.** The file went in as base64 over SSH (checksums
+compared), was opened with `open`, and after 6 seconds the blue-button finder
+from the 09-17 probe located *Add Shortcut* on all three sheets, at the same
+box on both no-question builds. A build with questions shows "Add Shortcut…"
+with an ellipsis, then a separate "<name> Setup" window with the fields and a
+Cancel / Add Shortcut row at the bottom; the finder found that button too.
+Leaving the fields empty and clicking it keeps the questions. No consent
+prompts appeared on import.
+
+**A WAL-less copy fails the gate closed, not open.** The gate passed on the raw
+triple (`.sqlite` + `-wal` + `-shm`) and on an in-guest
+`sqlite3 <db> ".backup /tmp/x"`, both reading four shortcuts with the largest
+at 339 actions, 3 questions, 0 answered. The main file alone read zero targets,
+so the gate refused with "missing from the library" three times. `.backup` is
+the simpler thing for a rig to do: one consistent file.
+
+**The publisher raised no consent prompts.** The Always Allow answers given on
+the base on 09-17 persisted and carried into the clone, so the gray-button
+consent finder was not exercised on this run.
+
+**`shortcuts run` blocks on a shortcut's final alert.** The publisher ends in an
+alert (its done message, Cancel / Done). Its text reached stdout, but the run
+did not return until Done was clicked: started 15:06:58, returned 15:07:51,
+right after the click. The links were already on the pasteboard, and `pbpaste`
+over SSH returned the exact markup. A headless rig either clicks Done (a blue
+default button the finder would find) or the publisher stops ending on a
+blocking alert.
+
+**Do not hand links over through the host clipboard.** The consumer's page
+updater reads the URLs from stdin in page order, so they were piped in rather
+than overwriting the operator's pasteboard. A rig's output contract is name to
+URL, nothing on the host clipboard.
+
+**Records are fetchable at once.** All three links resolved through the records
+API and passed within about a minute of minting.
+
+**What it cost.** Preparing the base (boot, kcpassword, sharing, shutdown,
+copy-on-write backup, TCC write, boot, three deletes, sync off, shutdown) took
+about 30 minutes, most of it the VNC quirks above. Clone, boot, three imports,
+gate, publish, verify and delete took about 12 minutes.
 
 ## Open questions
 
@@ -506,21 +1078,43 @@ Written down so nobody assumes an answer. Each is cheap once a guest exists.
 4. **Does a base carrying third-party kexts or drivers behave the same?** Raised
    by the `home-platform` rehearsal work, whose bases carry SoftRAID; the bases
    measured here carry nothing third-party.
-5. **Does a clone keep a signed-in Apple Account session?** `tart clone` does not
-   regenerate the `VZMacMachineIdentifier` and Apple derives a VM's iCloud
-   identity from the host's Secure Enclave, so it plausibly does — untested.
-6. **How do you read, and assert, that Shortcuts iCloud sync is off in a
-   guest?** `bake` does not check, and it should: a synced library carries one
-   clone's imports into the next clone's, which is exactly the more-than-one-copy
-   -by-name state the publisher refuses to mint from. Unknown here is how to read
-   that setting without a GUI, which is why this is a question rather than a
-   check — a sync assertion that cannot actually see the setting would report
+5. ~~**Does a clone keep a signed-in Apple Account session?**~~ **Answered on
+   macOS 26.6.2: yes.** A clone of a signed-in base reported 24 iCloud containers
+   syncing after its own restart, with no re-challenge. See "Clones". Two things
+   near it are still open: whether a clone *inherits* its base's identity, which
+   the attestation certificate cannot show either way, and whether any of this
+   holds on a 27 guest, where no session exists to clone.
+6. ~~**How do you read, and assert, that Shortcuts iCloud sync is off in a
+   guest?**~~ **Answered 2026-09-18.** It is readable with no GUI:
+   `~/Library/Group Containers/group.is.workflow.my.app/Library/Preferences/group.is.workflow.my.app.plist`,
+   key `WFCloudKitSyncEnabled`. It read `false` right after the toggle was
+   turned off in the guest, and reads `0` on a host Mac where sync has been off
+   since 2026-09-11. Its value *before* the toggle was not read, so what "on"
+   looks like — `1`, or the key absent — is not measured: assert `== 0` or
+   `false`, never `!= 1`. The reason it mattered stands: a synced library
+   carries one clone's imports into the next clone's, which is exactly the
+   more-than-one-copy-by-name state the publisher refuses to mint from. Two
+   routes had been ruled out before this one was found. `MobileMeAccounts.plist` is **not written to
+   disk** in a guest whose session never became ready, so reading it answers
+   nothing, and System Settings reported iCloud Drive on with storage used on a
+   guest with no container at all — so neither the plist nor the pane can be
+   trusted. `brctl status` does report the truth about iCloud Drive; the
+   equivalent for Shortcuts specifically is still unknown, which is why this
+   stays a question. A sync assertion that cannot see the setting would report
    success without having looked, the failure shape this whole document is about.
-7. **Do setup questions survive a synthesized import?** `docs/simulator-harness.md`
-   records a link that arrived with zero import questions where its siblings had
-   three, the one difference being that its clicks were synthesized rather than
-   human. Every import here is synthesized. An imported copy that lost its
-   questions installs in one tap and leaves its credentials unset, with no error.
+7. **Can a plain account — real hardware provenance, no ADP — reach CloudKit
+   readiness in a guest?** This is now the question that decides whether minting
+   from a guest is possible at all, and everything upstream of it is answered.
+   Neither account tested could answer it: one was refused as an unsupported
+   device before it got that far, the other had ADP and could never become ready.
+   See "iCloud in a guest".
+8. ~~**Do setup questions survive a synthesized import?**~~ **Answered on
+   macOS 26.6.2, 2026-09-18: yes.** A 3-question build imported by VNC clicks
+   landed with all 3, read from the database, and the link minted from it
+   carries all 3 with matching `ActionIndex`, `ParameterKey` and `Category`
+   ("Minting from a clone, end to end" above). The zero-question link that
+   raised this question, recorded in `docs/simulator-harness.md`, remains
+   unexplained, and every link still gets checked rather than trusted.
 
 ## Verifying a screen actually rendered
 
