@@ -247,6 +247,24 @@ system-wide hit test and does see them: it returned the `TextArea` with its
 `AXValue`, and *Done*, *Cancel*, *Allow* and *Always Allow* as labeled buttons
 with frames, at about 0.2 s a call. Touches and typed text reach them too.
 
+**One sentence, three meanings.** An empty hit test exits 1 and prints *No
+translation object returned for simulator. This means you have likely specified
+a point onscreen that is invalid or invisible due to a fullscreen dialog.* The
+sentence names two conditions, and there is a third. A companion that has just
+spawned prints it for every point for about four seconds, whatever is on
+screen. And a companion that has been alive a long time stops resolving points
+inside a runner dialog's rectangle — printing the same sentence — while `idb ui
+tap` at those same coordinates still lands: measured 2026-09-20, a companion an
+hour old saw nothing of an Ask for Input dialog that one ninety seconds old
+resolved completely, text field included. Where between ninety seconds and an
+hour it turns was never measured. The first two conditions mean "nothing to
+report" and the third means "a dialog is up and is blocking the read that would
+find it", so a single empty hit test is never evidence of an absence. What
+separates them is the rest of the pass: a companion that is still answering
+names *something* at a probed point, so `_probe_seeds` reports whether any
+probe in a pass resolved anything, and a pass that resolved nothing costs a
+replacement companion (`_second_look`) rather than a negative.
+
 `--api axbridge` is worth using for the frontmost app: on the library screen it
 returned 80 elements to the default backend's 8, including the navigation bar
 and each tile's Play button, which the default backend drops. That is not the
@@ -715,4 +733,5 @@ verb in `WorkflowKit`.
 | A runner dialog (*Allow*, *Done*, *Cancel*, …) is never found | Its position isn't among `SEEDS` — a new iOS layout moved it. The failure leaves a screenshot in the artifacts directory showing where it actually is; measure it and add a row |
 | A test hangs then fails to settle | Look at the artifacts directory you gave `Simulator` — a prompt shape the harness did not recognize |
 | Everything fails after an erase | The CA is re-added automatically, but only on the run that erased |
+| A run sits behind a consent nobody pressed, and the harness says no prompt was up | The companion has gone blind to the dialog's rectangle: `describe-point` inside it prints the empty-hit-test sentence while `idb ui tap` there still lands. `find_button` replaces the companion and looks again when a whole seed pass resolves nothing, at most once every `COMPANION_RECHECK_EVERY` seconds; a run that still hangs means the dialog is at a position `SEEDS` does not know |
 | A field or button that should be on screen is reported missing | The tree query returned the screen *under* a runner dialog, not the dialog itself — every tree walk stops at the frontmost app, and the screen under a dialog satisfies that as readily as a dialog-free one. That is why the runner's dialogs are found by hit test (`describe-point`) at a `SEEDS` position instead of by tree lookup |

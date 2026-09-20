@@ -343,7 +343,13 @@ class Simulator:
         * **"No translation object returned"** is an empty hit test — and a
           fresh companion's first read, about four seconds after it spawns,
           prints the same thing. Both mean "nothing to report", so both come
-          back as an empty string and parse as nothing on screen.
+          back as an empty string and parse as nothing on screen. A *third*
+          condition prints that same sentence and means the opposite: a
+          long-lived companion stops resolving points inside a runner dialog's
+          rectangle while taps there still land, so the dialog blocks the read
+          that would find it. That one cannot be told apart here, one call at a
+          time; `_probe_seeds` and `_second_look` are where it is caught, and
+          `idb.NOTHING_THERE` documents all three.
         * **"Failed to connect to companion"** means the registry in
           `/tmp/idb/state` outlived the process it names. Dropping that one
           registration lets the next command spawn a fresh companion. Never

@@ -7,10 +7,15 @@ Captured by `tests/capture_idb_fixtures.py` on 2026-09-19, from a
 One directory per screen. `all-ax.json` and `all-axbridge.json` are the two
 backends' `describe-all` output for it; each `point-<x>-<y>.json` is
 `describe-point <x> <y>` at that exact point, so a fake idb can answer by argv
-rather than by replay order. `warmup.txt` is what idb prints when it has nothing
-to report: a fresh companion says it on its first read, and an empty hit test
-says it at any time. The two are the same sentence, which is why the harness
-treats both as "nothing on screen" with one rule. This capture's copy of
+rather than by replay order. `warmup.txt` is the sentence idb prints for
+three different conditions: a fresh companion says it on its first read for
+about four seconds, an empty hit test says it at any time, and a companion that
+has been alive a long time says it for every point inside a runner dialog's
+rectangle while `idb ui tap` there still lands. The first two mean "nothing on
+screen" and the third means the opposite, and the text is identical, so no
+single hit test is evidence of an absence — `_probe_seeds` reports whether a
+whole pass resolved anything, which is what tells the third case from the
+first. This capture's copy of
 `warmup.txt` came from an empty hit test far off screen (the companion had already reconnected by the time the first read landed).
 
 Recapture on a new runtime by booting one device, leaving it idle, and running

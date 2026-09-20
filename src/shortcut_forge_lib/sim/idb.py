@@ -42,7 +42,30 @@ AXBRIDGE = "axbridge"
 """The fuller backend: sees the navigation bar and the tiles, not a presented sheet."""
 
 NOTHING_THERE = "No translation object returned"
-"""The start of what idb prints for an empty hit test, and for a companion's first read."""
+"""The start of the one sentence idb prints for three different conditions.
+
+In full: *No translation object returned for simulator. This means you have
+likely specified a point onscreen that is invalid or invisible due to a
+fullscreen dialog.* The sentence admits to two meanings itself, and driving
+a device through it turned up a third:
+
+* nothing is drawn at the point;
+* the companion has just spawned, and answers this way for about four
+  seconds whatever is on screen;
+* the companion has been alive a long time and has stopped resolving points
+  inside a runner dialog's rectangle, while `idb ui tap` at those same
+  coordinates still lands. Measured 2026-09-20: one an hour old saw nothing
+  of an Ask for Input dialog that one ninety seconds old resolved
+  completely, the text field included. Where between those it turns was
+  never measured.
+
+The first two mean "nothing to report". The third means the opposite — a
+dialog is up and is blocking the very read that would find it — so no
+caller may take a single empty hit test for an absence.
+`harness.Simulator._probe_seeds` reports whether a whole pass resolved
+anything, which is how the third case is told from the first, and
+`_second_look` and `_wait_for_field` are what it costs.
+"""
 
 
 @dataclass(frozen=True)
