@@ -548,9 +548,9 @@ answered, in this order:
    sheets, each naming a single shortcut. Always Allow on the first does not
    suppress these, which is the finding: the first sheet enumerates the library
    and reads like a blanket grant, and is not one.
-3. `Allow "<publisher>" to copy to the clipboard?` — **three** buttons on this
-   run, not the two recorded above, so that shape is not settled; the minted
-   links were legible in the sheet.
+3. `Allow "<publisher>" to copy 3 urls and 4 shortcuts to the clipboard?` —
+   three buttons, with the minted links legible as items in the body. This is
+   not the same prompt as the two-button one recorded above; see below.
 4. `Allow "<publisher>" to display notifications?` — two buttons.
 
 **These grants die with the clone, and they cannot be pre-granted.** They are
@@ -570,6 +570,25 @@ eleven minutes; the minting itself takes seconds.
 last consent the run returned immediately, exit 0, with the markup on the
 clipboard and no Done click — which is what ending in a notification rather
 than Show Result was for.
+
+**The clipboard consent has two shapes, and the title tells them apart — not
+the button count.** Both were measured, and neither reading was wrong:
+
+| title | buttons | payload |
+|---|---|---|
+| `Allow "<name>" to copy to the clipboard?` | Don't Allow / Allow | plain text |
+| `Allow "<name>" to copy N urls and M shortcuts to the clipboard?` | Don't Allow / Allow Once / Always Allow | items iOS can enumerate by type |
+
+The shape follows what is being copied. A plain string gets the two-button
+sheet; a payload the system can enumerate as typed items gets the three-button
+one, and names the counts in the title. Those counts are not the same number:
+a publisher copying three links reported *3 urls and 4 shortcuts*, because it
+counts the shortcut objects from the library walk rather than only the links.
+
+**So a driver must not key on the button count, and must not assume a sheet
+titled "…to the clipboard?" has two buttons.** Find the button row and take the
+right-most, which is correct for both shapes. The title is the reliable
+discriminator when you need to know in advance which one you are looking at.
 
 **Two-button consent sheets need their own calibration.** The gray-button
 finder missed the two-button sheet twice: once it sat over a System Settings
