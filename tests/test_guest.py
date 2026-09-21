@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import plistlib
 import sqlite3
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -461,3 +462,45 @@ def test_an_unreadable_guest_is_left_out_not_guessed(tmp_path, monkeypatch):
     assert tart.machine_id("broken") is None
     assert tart.machine_id("never-created") is None
     assert tart.copies_of(tart.machine_id("base"), ["broken", "never-created"]) == []
+
+
+def test_a_vncdo_argv_that_reaches_a_human_has_no_password_in_it():
+    """`TimeoutExpired` and `CalledProcessError` both render `cmd`, so argv is a way out for a secret.
+
+    vncdotool reads the password only from argv — there is no file or
+    environment alternative, which is why `ssh.run` can keep it in a 0700
+    askpass helper and this cannot.
+    """
+    argv = vnc.capture_args("10.0.0.2", "admin", "hunter2", "/tmp/shot.png")
+    assert "hunter2" in argv, "the real argv must still carry it, or vncdo would prompt and hang"
+
+    safe = vnc.redacted(argv)
+    assert "hunter2" not in safe
+    assert "hunter2" not in " ".join(safe)
+    assert safe[safe.index("--password") + 1] == vnc.REDACTED
+    assert safe[safe.index("--username") + 1] == "admin", "only the password is replaced"
+    assert len(safe) == len(argv)
+
+
+def test_redacting_a_click_argv_leaves_the_coordinates_alone():
+    argv = vnc.click_args("10.0.0.2", "admin", "hunter2", 42, 99)
+    safe = vnc.redacted(argv)
+    assert "hunter2" not in safe
+    assert safe[-3:] == argv[-3:]
+
+
+def test_a_vncdo_timeout_raises_without_the_password(monkeypatch, tmp_path):
+    """The re-raise must not chain, because the chained exception prints argv too."""
+    argv = vnc.capture_args("10.0.0.2", "admin", "hunter2", str(tmp_path / "shot.png"))
+
+    def timeout(*_a, **_kw):
+        raise subprocess.TimeoutExpired(cmd=argv, timeout=180)
+
+    monkeypatch.setattr(bake.subprocess, "run", timeout)
+    with pytest.raises(bake.BakeError) as raised:
+        bake._vncdo(argv)
+
+    assert "hunter2" not in str(raised.value)
+    assert vnc.REDACTED in str(raised.value)
+    assert raised.value.__cause__ is None
+    assert raised.value.__suppress_context__, "an unsuppressed TimeoutExpired prints the argv it carries"

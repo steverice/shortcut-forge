@@ -15,10 +15,17 @@ number).
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from urllib.parse import unquote, urlsplit
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 #: Apple's Screen Sharing port in the guest.
 PORT = 5900
+
+#: What replaces the password when an argv reaches a human or a log.
+REDACTED = "<password>"
 
 
 def server_arg(host: str, port: int = PORT) -> str:
@@ -29,6 +36,29 @@ def server_arg(host: str, port: int = PORT) -> str:
 def auth_args(username: str, password: str) -> list[str]:
     """ARD authentication. Both halves, always — a missing username hangs."""
     return ["--username", username, "--password", password]
+
+
+def redacted(argv: Sequence[str]) -> list[str]:
+    """`argv` with the value after `--password` replaced, for anything a human will read.
+
+    `subprocess.TimeoutExpired` and `CalledProcessError` both render `cmd` in
+    their `str()`, so a vncdo argv that reaches a traceback, a log or an error
+    message carries the guest's password with it — and `check=False` does not
+    help, because a timeout raises regardless. vncdotool reads the password
+    only from argv, with no file or environment alternative, so unlike
+    `ssh.run` — which keeps it in a 0700 askpass helper — this cannot avoid
+    putting it there. Redacting on the way out is what is left.
+
+    It also reaches `ps` for the length of the call, the same exposure
+    `ssh.run`'s docstring describes for tart's `--provisioning-opts`, and for
+    the same reason it is survivable: a bake mints a fresh random password
+    rather than reusing a constant.
+    """
+    out = list(argv)
+    for i, arg in enumerate(out[:-1]):
+        if arg == "--password":
+            out[i + 1] = REDACTED
+    return out
 
 
 def parse_url(url: str) -> tuple[str, int, str]:

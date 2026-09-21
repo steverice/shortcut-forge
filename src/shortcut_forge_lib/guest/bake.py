@@ -325,6 +325,22 @@ def bake(
     return Baked(name=name, ip=host, username=username, password=password)
 
 
+def _vncdo(argv: list[str], *, timeout: float = 180) -> subprocess.CompletedProcess[str]:
+    """Run one vncdo argv, and never let the password out in an error.
+
+    `subprocess.TimeoutExpired` renders the whole argv in its `str()`, and
+    `check=False` does not prevent it — a timeout raises either way. Since
+    vncdotool takes the password on argv and offers nothing else, a vncdo call
+    that hangs is how the guest's password reaches a traceback. The re-raise
+    uses `from None` deliberately: chaining would print the original exception,
+    argv and all, which is the thing being suppressed.
+    """
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired:
+        raise BakeError(f"vncdo did not return within {timeout:.0f}s: {' '.join(vnc.redacted(argv))}") from None
+
+
 def prove(
     host: str,
     *,
@@ -344,13 +360,7 @@ def prove(
             on_step(message)
 
     shot = work_dir / "proof.png"
-    capture = subprocess.run(
-        vnc.capture_args(host, username, password, str(shot)),
-        capture_output=True,
-        text=True,
-        timeout=180,
-        check=False,
-    )
+    capture = _vncdo(vnc.capture_args(host, username, password, str(shot)))
     if capture.returncode or not shot.exists():
         raise BakeError(f"vncdo could not capture the screen: {capture.stderr.strip()}")
     colors = distinct_colors(shot)
@@ -379,13 +389,7 @@ def prove(
     with Image.open(shot) as handle:
         width, height = handle.size
     x, y = probe_point(width, height)
-    click = subprocess.run(
-        vnc.click_args(host, username, password, x, y),
-        capture_output=True,
-        text=True,
-        timeout=180,
-        check=False,
-    )
+    click = _vncdo(vnc.click_args(host, username, password, x, y))
     if click.returncode:
         raise BakeError(f"vncdo could not click: {click.stderr.strip()}")
     time.sleep(LAUNCH_SETTLE)
