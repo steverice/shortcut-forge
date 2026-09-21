@@ -534,11 +534,42 @@ run until answered:**
 > Allow "<name>" to output 1 text item?  ·  Don't Allow / Allow Once / Always Allow
 
 The third comes from Show Result under the CLI. Because they are per shortcut,
-a **replaced publisher re-asks** everything the old one had been allowed, so the
-first mint after swapping the base's publisher answers the clipboard and
-notification prompts again, and presumably the iCloud-link consent; the
-clipboard and link ones only appear on a run that actually mints, so a dry run
-cannot prime them.
+a **replaced publisher re-asks** everything the old one had been allowed, and
+the clipboard and link prompts only appear on a run that actually mints, so a
+dry run cannot prime them.
+
+**Every mint pays six consent sheets, and nothing removes them.** Measured
+2026-09-20 over a release that minted three links. Each blocked the run until
+answered, in this order:
+
+1. `Allow "<publisher>" to create iCloud link?` — three buttons, listing
+   **every** item in the library. Answered Always Allow.
+2. **The same question again, once per target** — three more three-button
+   sheets, each naming a single shortcut. Always Allow on the first does not
+   suppress these, which is the finding: the first sheet enumerates the library
+   and reads like a blanket grant, and is not one.
+3. `Allow "<publisher>" to copy to the clipboard?` — **three** buttons on this
+   run, not the two recorded above, so that shape is not settled; the minted
+   links were legible in the sheet.
+4. `Allow "<publisher>" to display notifications?` — two buttons.
+
+**These grants die with the clone, and they cannot be pre-granted.** They are
+held against the copy that runs them, which is the throwaway clone a mint is
+made in, so every release pays all six again. Granting them once in the base
+does not work either, and the reason is structural rather than a matter of
+ordering: with no targets in the base, the publisher stops at its own "not in
+your library" refusal *before* it reaches the actions that would ask. So the
+six are a per-mint cost with no one-time setup that removes them.
+
+An automated mint therefore cannot answer a fixed sequence and proceed, and
+cannot be primed into needing fewer. It needs a loop that keeps observing and
+answering until the run returns, on every run. Hand speed for the six was about
+eleven minutes; the minting itself takes seconds.
+
+**The notification ending works headless, confirmed on a real mint.** After the
+last consent the run returned immediately, exit 0, with the markup on the
+clipboard and no Done click — which is what ending in a notification rather
+than Show Result was for.
 
 **Two-button consent sheets need their own calibration.** The gray-button
 finder missed the two-button sheet twice: once it sat over a System Settings
@@ -553,10 +584,23 @@ next sheet sits over: afterward the frontmost app was Finder with a restored
 System Settings window, which is the backdrop that hid Don't Allow. `open -a
 Shortcuts` after the `killall` restores a known backdrop.
 
-One loose end: a fresh publisher build is 99 actions, while the base's copy
-reads 100 in the gate, so the base holds a publisher from an older build or an
-older library revision. It minted three good links regardless, and nobody has
-looked at which action differs.
+**Importing does not add an action.** A fresh publisher build reads 99 actions
+and the base's old copy read 100, which left open whether the import path was
+adding one. It was not: a freshly imported publisher reads 99 in the guest's
+database, the same as the build, so the base had simply been holding an older
+build. Measured 2026-09-20, closing that loose end.
+
+**A vncdo timeout is not evidence that anything failed.** Two calls timed out
+mid-mint — at 120 s and again at 240 s — while the guest was busy, and a third
+hung on a capture. The guest was healthy each time and the run was still alive;
+re-capturing showed the next sheet. A driver should treat a vncdo timeout as
+"unknown, observe again" rather than as fatal.
+
+**The delete confirmation tells you the base's iCloud sync state**, which is
+worth a glance before minting. With sync on it reads *"deleted from all of your
+iCloud devices"*; with sync off, *"permanently deleted from your device"*. It
+costs nothing and it checks the one setting that decides whether a mint is safe
+to do here at all.
 
 ## iCloud in a guest: it works on 26, and cannot work on 27
 
